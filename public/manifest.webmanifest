@@ -1,0 +1,10 @@
+{
+  "name": "Or Finance",
+  "short_name": "Or Finance",
+  "description": "Organizador financeiro pessoal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "pt-BR"
+}
