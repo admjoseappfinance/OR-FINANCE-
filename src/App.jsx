@@ -18,6 +18,45 @@ const menu = [
 ];
 
 function Painel({ email, sair }) {
+    const [contas, setContas] = useState([]);
+  const [nomeConta, setNomeConta] = useState("");
+  const [saldoConta, setSaldoConta] = useState("");
+
+  async function carregarContas() {
+    const { data } = await supabase
+      .from("accounts")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (data) setContas(data);
+  }
+
+  async function criarConta(e) {
+    e.preventDefault();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { error } = await supabase.from("accounts").insert({
+      user_id: user.id,
+      name: nomeConta,
+      type: "corrente",
+      balance: Number(saldoConta) || 0,
+    });
+
+    if (!error) {
+      setNomeConta("");
+      setSaldoConta("");
+      carregarContas();
+    }
+  }
+
+  useEffect(() => {
+    carregarContas();
+  }, []);
   const [active, setActive] = useState("Início");
   const [menuAberto, setMenuAberto] = useState(false);
 
@@ -135,12 +174,69 @@ function Painel({ email, sair }) {
                 </section>
               </div>
             </>
-          ) : (
-            <section className="panel page">
-              <span>MÓDULO</span>
-              <h2>{active}</h2>
-              <p>Esta área será configurada em seguida.</p>
-            </section>
+          <section className="panel page">
+  {active === "Contas" ? (
+    <>
+      <span>FINANÇAS</span>
+      <h2>Minhas contas</h2>
+
+      <form onSubmit={criarConta} style={{ marginTop: 20 }}>
+        <input
+          type="text"
+          placeholder="Nome da conta"
+          value={nomeConta}
+          onChange={(e) => setNomeConta(e.target.value)}
+          required
+          style={campo}
+        />
+
+        <input
+          type="number"
+          placeholder="Saldo inicial"
+          value={saldoConta}
+          onChange={(e) => setSaldoConta(e.target.value)}
+          style={campo}
+        />
+
+        <button type="submit" style={botao}>
+          Adicionar conta
+        </button>
+      </form>
+
+      <div style={{ marginTop: 25 }}>
+        {contas.length === 0 ? (
+          <p>Nenhuma conta cadastrada.</p>
+        ) : (
+          contas.map((conta) => (
+            <div
+              key={conta.uuid}
+              style={{
+                padding: 15,
+                marginTop: 10,
+                background: "#111",
+                border: "1px solid #222",
+                borderRadius: 10,
+                display: "flex",
+                justifyContent: "space-between",
+              }}
+            >
+              <strong>{conta.name}</strong>
+              <span>
+                R$ {Number(conta.balance).toFixed(2).replace(".", ",")}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </>
+  ) : (
+    <>
+      <span>MÓDULO</span>
+      <h2>{active}</h2>
+      <p>Esta área será configurada em seguida.</p>
+    </>
+  )}
+</section>
           )}
 
           <button
