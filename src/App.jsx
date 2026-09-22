@@ -50,8 +50,8 @@ function Painel({ email, sair }) {
       setContas(data);
 
       if (data.length > 0) {
-        setContaEntrada((atual) => atual || data[0].uuid);
-        setContaDespesa((atual) => atual || data[0].uuid);
+        setContaEntrada((atual) => atual || data[0].name);
+        setContaDespesa((atual) => atual || data[0].name);
       }
     }
   }
@@ -123,6 +123,22 @@ function Painel({ email, sair }) {
       return;
     }
 
+    const contaSelecionada = contas.find(
+      (conta) => conta.name === contaEntrada
+    );
+
+    if (!contaSelecionada) {
+      alert("Conta não encontrada.");
+      return;
+    }
+
+    const uuidConta = contaSelecionada.uuid;
+
+    if (!uuidConta) {
+      alert("A conta não possui UUID.");
+      return;
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -133,7 +149,7 @@ function Painel({ email, sair }) {
 
     const { error } = await supabase.from("incomes").insert({
       user_id: user.id,
-      account_id: contaEntrada,
+      account_id: uuidConta,
       description: descricaoEntrada,
       amount: valor,
       income_date: new Date().toISOString().split("T")[0],
@@ -144,23 +160,15 @@ function Painel({ email, sair }) {
       return;
     }
 
-    const contaAtual = contas.find(
-      (conta) => conta.uuid === contaEntrada
-    );
-
-    if (!contaAtual) {
-      alert("Conta não encontrada.");
-      return;
-    }
-
-    const novoSaldo = Number(contaAtual.balance || 0) + valor;
+    const saldoAtual = Number(contaSelecionada.balance || 0);
+    const novoSaldo = saldoAtual + valor;
 
     const { error: erroSaldo } = await supabase
       .from("accounts")
       .update({
         balance: novoSaldo,
       })
-      .eq("uuid", contaEntrada);
+      .eq("uuid", uuidConta);
 
     if (erroSaldo) {
       alert(erroSaldo.message);
@@ -172,6 +180,8 @@ function Painel({ email, sair }) {
 
     await carregarContas();
     await carregarEntradas();
+
+    alert("Entrada adicionada com sucesso!");
   }
 
   async function criarDespesa(e) {
@@ -179,6 +189,22 @@ function Painel({ email, sair }) {
 
     if (!contaDespesa) {
       alert("Selecione uma conta.");
+      return;
+    }
+
+    const contaSelecionada = contas.find(
+      (conta) => conta.name === contaDespesa
+    );
+
+    if (!contaSelecionada) {
+      alert("Conta não encontrada.");
+      return;
+    }
+
+    const uuidConta = contaSelecionada.uuid;
+
+    if (!uuidConta) {
+      alert("A conta não possui UUID.");
       return;
     }
 
@@ -192,7 +218,7 @@ function Painel({ email, sair }) {
 
     const { error } = await supabase.from("expenses").insert({
       user_id: user.id,
-      account_id: contaDespesa,
+      account_id: uuidConta,
       description: descricaoDespesa,
       amount: valor,
       expense_date: new Date().toISOString().split("T")[0],
@@ -203,23 +229,15 @@ function Painel({ email, sair }) {
       return;
     }
 
-    const contaAtual = contas.find(
-      (conta) => conta.uuid === contaDespesa
-    );
-
-    if (!contaAtual) {
-      alert("Conta não encontrada.");
-      return;
-    }
-
-    const novoSaldo = Number(contaAtual.balance || 0) - valor;
+    const saldoAtual = Number(contaSelecionada.balance || 0);
+    const novoSaldo = saldoAtual - valor;
 
     const { error: erroSaldo } = await supabase
       .from("accounts")
       .update({
         balance: novoSaldo,
       })
-      .eq("uuid", contaDespesa);
+      .eq("uuid", uuidConta);
 
     if (erroSaldo) {
       alert(erroSaldo.message);
@@ -231,6 +249,8 @@ function Painel({ email, sair }) {
 
     await carregarContas();
     await carregarDespesas();
+
+    alert("Despesa adicionada com sucesso!");
   }
 
   useEffect(() => {
@@ -258,8 +278,6 @@ function Painel({ email, sair }) {
     (total, despesa) => total + Number(despesa.amount || 0),
     0
   );
-
-  const saldoTotal = totalContas;
 
   return (
     <div className="app">
@@ -322,7 +340,7 @@ function Painel({ email, sair }) {
                   <span>Saldo disponível</span>
 
                   <strong>
-                    R$ {saldoTotal.toFixed(2).replace(".", ",")}
+                    R$ {totalContas.toFixed(2).replace(".", ",")}
                   </strong>
                 </div>
 
@@ -492,7 +510,7 @@ function Painel({ email, sair }) {
                       {contas.map((conta) => (
                         <option
                           key={conta.uuid}
-                          value={conta.uuid}
+                          value={conta.name}
                         >
                           {conta.name}
                         </option>
@@ -584,7 +602,7 @@ function Painel({ email, sair }) {
                       {contas.map((conta) => (
                         <option
                           key={conta.uuid}
-                          value={conta.uuid}
+                          value={conta.name}
                         >
                           {conta.name}
                         </option>
