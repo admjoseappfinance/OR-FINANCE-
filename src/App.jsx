@@ -11,123 +11,136 @@ const menu = [
   "Relatórios",
 ];
 
+function Inicio() {
+  return (
+    <>
+      <section className="hero">
+        <div>
+          <span>Saldo disponível</span>
+          <strong>R$ 0,00</strong>
+        </div>
+        <button className="primary-button">+ Nova movimentação</button>
+      </section>
+
+      <div className="stats">
+        <div className="stat-card">
+          <span>Entradas</span>
+          <strong>R$ 0,00</strong>
+          <small>Este mês</small>
+        </div>
+
+        <div className="stat-card">
+          <span>Despesas</span>
+          <strong>R$ 0,00</strong>
+          <small>Este mês</small>
+        </div>
+
+        <div className="stat-card">
+          <span>A pagar</span>
+          <strong>R$ 0,00</strong>
+          <small>Próximos vencimentos</small>
+        </div>
+      </div>
+
+      <div className="dashboard-grid">
+        <section className="panel large">
+          <div className="panel-title">
+            <div>
+              <span>FLUXO FINANCEIRO</span>
+              <h2>Movimentações recentes</h2>
+            </div>
+          </div>
+
+          <div className="empty">
+            <div className="empty-icon">—</div>
+            <h3>Nenhuma movimentação</h3>
+            <p>Suas entradas e despesas aparecerão aqui.</p>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-title">
+            <div>
+              <span>ACESSO RÁPIDO</span>
+              <h2>Adicionar</h2>
+            </div>
+          </div>
+
+          <div className="quick-actions">
+            <button>+ Entrada</button>
+            <button>− Despesa</button>
+            <button>+ Conta</button>
+            <button>+ Cartão</button>
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function Tela({ nome }) {
+  return (
+    <section className="panel page">
+      <span>MÓDULO</span>
+      <h2>{nome}</h2>
+      <p>Esta área será configurada em seguida.</p>
+    </section>
+  );
+}
+
 export default function App() {
   const [active, setActive] = useState("Início");
 
   return (
     <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-logo">O</div>
-          <div>
-            <div className="brand-name">Or Finance</div>
-            <div className="brand-subtitle">FINANÇAS PESSOAIS</div>
-          </div>
-        </div>
-
-        <nav className="nav">
-          {menu.map((item) => (
-            <button
-              key={item}
-              className={`nav-button ${active === item ? "active" : ""}`}
-              onClick={() => setActive(item)}
-            >
-              {item}
-            </button>
-          ))}
-        </nav>
-
-        <button className="settings-button">Configurações</button>
-      </aside>
-
-      <main className="main">
-        <header className="topbar">
-          <div>
-            <div className="eyebrow">VISÃO GERAL</div>
-            <h1>{active}</h1>
+      <div className="layout">
+        <aside className="sidebar">
+          <div className="brand">
+            <div className="brand-logo">O</div>
+            <div>
+              <div className="brand-name">Or Finance</div>
+              <div className="brand-subtitle">FINANÇAS PESSOAIS</div>
+            </div>
           </div>
 
-          <div className="profile">JC</div>
-        </header>
+          <nav className="nav">
+            {menu.map((item) => (
+              <button
+                key={item}
+                className={`nav-button ${
+                  active === item ? "active" : ""
+                }`}
+                onClick={() => setActive(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </nav>
 
-        <section className="content">
-          {active === "Início" ? (
-            <>
-              <div className="hero">
-                <div>
-                  <span>Saldo disponível</span>
-                  <strong>R$ 0,00</strong>
-                </div>
+          <button className="settings-button">
+            Configurações
+          </button>
+        </aside>
 
-                <button className="primary-button">+ Nova movimentação</button>
-              </div>
+        <main className="main">
+          <header className="topbar">
+            <div>
+              <div className="eyebrow">OR FINANCE</div>
+              <h1>{active}</h1>
+            </div>
 
-              <div className="stats">
-                <div className="stat-card">
-                  <span>Entradas</span>
-                  <strong>R$ 0,00</strong>
-                  <small>Este mês</small>
-                </div>
+            <div className="profile">JC</div>
+          </header>
 
-                <div className="stat-card">
-                  <span>Despesas</span>
-                  <strong>R$ 0,00</strong>
-                  <small>Este mês</small>
-                </div>
-
-                <div className="stat-card">
-                  <span>A pagar</span>
-                  <strong>R$ 0,00</strong>
-                  <small>Próximos vencimentos</small>
-                </div>
-              </div>
-
-              <div className="dashboard-grid">
-                <section className="panel large">
-                  <div className="panel-title">
-                    <div>
-                      <span>FLUXO FINANCEIRO</span>
-                      <h2>Movimentações recentes</h2>
-                    </div>
-                  </div>
-
-                  <div className="empty">
-                    <div className="empty-icon">—</div>
-                    <h3>Nenhuma movimentação</h3>
-                    <p>
-                      Suas entradas e despesas aparecerão aqui.
-                    </p>
-                  </div>
-                </section>
-
-                <section className="panel">
-                  <div className="panel-title">
-                    <div>
-                      <span>ACESSO RÁPIDO</span>
-                      <h2>Adicionar</h2>
-                    </div>
-                  </div>
-
-                  <div className="quick-actions">
-                    <button>+ Entrada</button>
-                    <button>− Despesa</button>
-                    <button>+ Conta</button>
-                    <button>+ Cartão</button>
-                  </div>
-                </section>
-              </div>
-            </>
-          ) : (
-            <section className="panel page">
-              <span>MÓDULO</span>
-              <h2>{active}</h2>
-              <p>
-                Esta área será configurada e conectada ao seu financeiro.
-              </p>
-            </section>
-          )}
-        </section>
-      </main>
+          <section className="content">
+            {active === "Início" ? (
+              <Inicio />
+            ) : (
+              <Tela nome={active} />
+            )}
+          </section>
+        </main>
+      </div>
     </div>
   );
 }
