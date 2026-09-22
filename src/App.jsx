@@ -420,6 +420,8 @@ useEffect(() => {
         ))
       )}
     </div>
+    ) : (
+  <>
     <span>MÓDULO</span>
     <h2>{active}</h2>
     <p>Esta área será configurada em seguida.</p>
