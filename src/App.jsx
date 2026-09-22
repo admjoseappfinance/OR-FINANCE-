@@ -301,8 +301,34 @@ useEffect(() => {
 
       <button type="submit" style={botao}>
         Adicionar entrada
-      </button>
-    </form>
+          </button>
+  </form>
+
+  <div style={{ marginTop: 25 }}>
+    {entradas.length === 0 ? (
+      <p>Nenhuma entrada cadastrada.</p>
+    ) : (
+      entradas.map((entrada) => (
+        <div
+          key={entrada.id}
+          style={{
+            padding: 15,
+            marginTop: 10,
+            background: "#111",
+            border: "1px solid #222",
+            borderRadius: 10,
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <strong>{entrada.description}</strong>
+          <span>
+            R$ {Number(entrada.amount).toFixed(2).replace(".", ",")}
+          </span>
+        </div>
+      ))
+    )}
+  </div>
   </>
 ) : (
   <>
