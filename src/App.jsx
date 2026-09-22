@@ -82,7 +82,14 @@ const [descricaoEntrada, setDescricaoEntrada] = useState("");
       carregarContas();
     }
   }
+async function carregarEntradas() {
+  const { data } = await supabase
+    .from("incomes")
+    .select("*")
+    .order("income_date", { ascending: false });
 
+  if (data) setEntradas(data);
+}
   useEffect(() => {
     carregarContas();
   }, []);
