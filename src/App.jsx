@@ -90,9 +90,10 @@ async function carregarEntradas() {
 
   if (data) setEntradas(data);
 }
-  useEffect(() => {
-    carregarContas();
-  }, []);
+useEffect(() => {
+  carregarContas();
+  carregarEntradas();
+}, []);
   const [active, setActive] = useState("Início");
   const [menuAberto, setMenuAberto] = useState(false);
 
