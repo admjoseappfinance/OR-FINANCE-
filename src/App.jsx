@@ -120,7 +120,9 @@ function Painel({ email, sair }) {
               <section className="hero">
                 <div>
                   <span>Saldo disponível</span>
-                  <strong>R$ 0,00</strong>
+                  <strong>
+  R$ {saldoTotal.toFixed(2).replace(".", ",")}
+</strong>
                 </div>
                 <button className="primary-button">+ Nova movimentação</button>
               </section>
