@@ -36,37 +36,56 @@ function Painel({ email, sair }) {
   const [menuAberto, setMenuAberto] = useState(false);
 
   async function carregarContas() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("accounts")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
     if (data) {
       setContas(data);
 
       if (data.length > 0) {
-        setContaEntrada((atual) => atual || data[0].id || data[0].uuid);
-        setContaDespesa((atual) => atual || data[0].id || data[0].uuid);
+        setContaEntrada((atual) => atual || data[0].uuid);
+        setContaDespesa((atual) => atual || data[0].uuid);
       }
     }
   }
 
   async function carregarEntradas() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("incomes")
       .select("*")
       .order("income_date", { ascending: false });
 
-    if (data) setEntradas(data);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (data) {
+      setEntradas(data);
+    }
   }
 
   async function carregarDespesas() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("expenses")
       .select("*")
       .order("expense_date", { ascending: false });
 
-    if (data) setDespesas(data);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (data) {
+      setDespesas(data);
+    }
   }
 
   async function criarConta(e) {
@@ -85,20 +104,22 @@ function Painel({ email, sair }) {
       balance: Number(saldoConta) || 0,
     });
 
-    if (!error) {
-      setNomeConta("");
-      setSaldoConta("");
-      carregarContas();
-    } else {
+    if (error) {
       alert(error.message);
+      return;
     }
+
+    setNomeConta("");
+    setSaldoConta("");
+
+    await carregarContas();
   }
 
   async function criarEntrada(e) {
     e.preventDefault();
 
     if (!contaEntrada) {
-      alert("Cadastre ou selecione uma conta.");
+      alert("Selecione uma conta.");
       return;
     }
 
@@ -108,28 +129,56 @@ function Painel({ email, sair }) {
 
     if (!user) return;
 
+    const valor = Number(valorEntrada) || 0;
+
     const { error } = await supabase.from("incomes").insert({
       user_id: user.id,
       account_id: contaEntrada,
       description: descricaoEntrada,
-      amount: Number(valorEntrada) || 0,
+      amount: valor,
       income_date: new Date().toISOString().split("T")[0],
     });
 
-    if (!error) {
-      setValorEntrada("");
-      setDescricaoEntrada("");
-      carregarEntradas();
-    } else {
+    if (error) {
       alert(error.message);
+      return;
     }
+
+    const contaAtual = contas.find(
+      (conta) => conta.uuid === contaEntrada
+    );
+
+    if (!contaAtual) {
+      alert("Conta não encontrada.");
+      return;
+    }
+
+    const novoSaldo = Number(contaAtual.balance || 0) + valor;
+
+    const { error: erroSaldo } = await supabase
+      .from("accounts")
+      .update({
+        balance: novoSaldo,
+      })
+      .eq("uuid", contaEntrada);
+
+    if (erroSaldo) {
+      alert(erroSaldo.message);
+      return;
+    }
+
+    setValorEntrada("");
+    setDescricaoEntrada("");
+
+    await carregarContas();
+    await carregarEntradas();
   }
 
   async function criarDespesa(e) {
     e.preventDefault();
 
     if (!contaDespesa) {
-      alert("Cadastre ou selecione uma conta.");
+      alert("Selecione uma conta.");
       return;
     }
 
@@ -139,21 +188,49 @@ function Painel({ email, sair }) {
 
     if (!user) return;
 
+    const valor = Number(valorDespesa) || 0;
+
     const { error } = await supabase.from("expenses").insert({
       user_id: user.id,
       account_id: contaDespesa,
       description: descricaoDespesa,
-      amount: Number(valorDespesa) || 0,
+      amount: valor,
       expense_date: new Date().toISOString().split("T")[0],
     });
 
-    if (!error) {
-      setValorDespesa("");
-      setDescricaoDespesa("");
-      carregarDespesas();
-    } else {
+    if (error) {
       alert(error.message);
+      return;
     }
+
+    const contaAtual = contas.find(
+      (conta) => conta.uuid === contaDespesa
+    );
+
+    if (!contaAtual) {
+      alert("Conta não encontrada.");
+      return;
+    }
+
+    const novoSaldo = Number(contaAtual.balance || 0) - valor;
+
+    const { error: erroSaldo } = await supabase
+      .from("accounts")
+      .update({
+        balance: novoSaldo,
+      })
+      .eq("uuid", contaDespesa);
+
+    if (erroSaldo) {
+      alert(erroSaldo.message);
+      return;
+    }
+
+    setValorDespesa("");
+    setDescricaoDespesa("");
+
+    await carregarContas();
+    await carregarDespesas();
   }
 
   useEffect(() => {
@@ -182,7 +259,7 @@ function Painel({ email, sair }) {
     0
   );
 
-  const saldoTotal = totalContas + totalEntradas - totalDespesas;
+  const saldoTotal = totalContas;
 
   return (
     <div className="app">
@@ -192,7 +269,9 @@ function Painel({ email, sair }) {
 
           <div>
             <div className="brand-name">Or Finance</div>
-            <div className="brand-subtitle">FINANÇAS PESSOAIS</div>
+            <div className="brand-subtitle">
+              FINANÇAS PESSOAIS
+            </div>
           </div>
         </div>
 
@@ -200,7 +279,9 @@ function Painel({ email, sair }) {
           {menu.map((item) => (
             <button
               key={item}
-              className={`nav-button ${active === item ? "active" : ""}`}
+              className={`nav-button ${
+                active === item ? "active" : ""
+              }`}
               onClick={() => selecionar(item)}
             >
               {item}
@@ -333,7 +414,9 @@ function Painel({ email, sair }) {
                       type="text"
                       placeholder="Nome da conta"
                       value={nomeConta}
-                      onChange={(e) => setNomeConta(e.target.value)}
+                      onChange={(e) =>
+                        setNomeConta(e.target.value)
+                      }
                       required
                       style={campo}
                     />
@@ -342,7 +425,10 @@ function Painel({ email, sair }) {
                       type="number"
                       placeholder="Saldo inicial"
                       value={saldoConta}
-                      onChange={(e) => setSaldoConta(e.target.value)}
+                      onChange={(e) =>
+                        setSaldoConta(e.target.value)
+                      }
+                      step="0.01"
                       style={campo}
                     />
 
@@ -357,7 +443,7 @@ function Painel({ email, sair }) {
                     ) : (
                       contas.map((conta) => (
                         <div
-                          key={conta.id || conta.uuid}
+                          key={conta.uuid}
                           style={{
                             padding: 15,
                             marginTop: 10,
@@ -393,7 +479,9 @@ function Painel({ email, sair }) {
                   >
                     <select
                       value={contaEntrada}
-                      onChange={(e) => setContaEntrada(e.target.value)}
+                      onChange={(e) =>
+                        setContaEntrada(e.target.value)
+                      }
                       required
                       style={campo}
                     >
@@ -403,8 +491,8 @@ function Painel({ email, sair }) {
 
                       {contas.map((conta) => (
                         <option
-                          key={conta.id || conta.uuid}
-                          value={conta.id || conta.uuid}
+                          key={conta.uuid}
+                          value={conta.uuid}
                         >
                           {conta.name}
                         </option>
@@ -483,7 +571,9 @@ function Painel({ email, sair }) {
                   >
                     <select
                       value={contaDespesa}
-                      onChange={(e) => setContaDespesa(e.target.value)}
+                      onChange={(e) =>
+                        setContaDespesa(e.target.value)
+                      }
                       required
                       style={campo}
                     >
@@ -493,8 +583,8 @@ function Painel({ email, sair }) {
 
                       {contas.map((conta) => (
                         <option
-                          key={conta.id || conta.uuid}
-                          value={conta.id || conta.uuid}
+                          key={conta.uuid}
+                          value={conta.uuid}
                         >
                           {conta.name}
                         </option>
