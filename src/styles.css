@@ -355,3 +355,79 @@ button {
     grid-template-columns: 1fr !important;
   }
 }
+
+@media (max-width: 800px) {
+  .sidebar {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    height: 76px !important;
+    min-height: 0 !important;
+    padding: 8px !important;
+    z-index: 1000 !important;
+    border-right: 0 !important;
+    border-top: 1px solid #222 !important;
+    background: #080808 !important;
+  }
+
+  .brand,
+  .settings-button {
+    display: none !important;
+  }
+
+  .nav {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-around !important;
+    align-items: stretch !important;
+    gap: 4px !important;
+  }
+
+  .nav-button {
+    flex: 1 !important;
+    padding: 8px 4px !important;
+    text-align: center !important;
+    font-size: 10px !important;
+    white-space: normal !important;
+  }
+
+  .main {
+    width: 100% !important;
+    margin-left: 0 !important;
+    padding-bottom: 85px !important;
+  }
+
+  .topbar {
+    height: 70px !important;
+    padding: 15px 18px !important;
+  }
+
+  .mobile-menu {
+    display: none !important;
+  }
+
+  .content {
+    padding: 16px !important;
+  }
+
+  .hero {
+    padding: 22px !important;
+  }
+
+  .hero strong {
+    font-size: 32px !important;
+  }
+
+  .stats {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
