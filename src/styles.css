@@ -315,3 +315,43 @@ button {
     grid-template-columns: 1fr;
   }
 }
+@media (max-width: 800px) {
+  .sidebar {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+
+  .main {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .nav {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .settings-button {
+    position: static !important;
+    width: 100% !important;
+  }
+
+  .content {
+    width: 100% !important;
+    padding: 16px !important;
+  }
+
+  .hero,
+  .stats,
+  .dashboard-grid {
+    width: 100% !important;
+  }
+
+  .stats,
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
