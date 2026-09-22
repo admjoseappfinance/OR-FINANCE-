@@ -174,6 +174,7 @@ function Painel({ email, sair }) {
                 </section>
               </div>
             </>
+      ) : (
           <section className="panel page">
   {active === "Contas" ? (
     <>
