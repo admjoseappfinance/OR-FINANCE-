@@ -49,6 +49,29 @@ const [despesas, setDespesas] = useState([]);
     setDescricaoEntrada("");
   }
 }
+  async function criarDespesa(e) {
+  e.preventDefault();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  const { error } = await supabase.from("expenses").insert({
+    user_id: user.id,
+    account_id: "0b349e04-4bc1-4833-b79e-30968c475dd5",
+    description: descricaoDespesa,
+    amount: Number(valorDespesa) || 0,
+    expense_date: new Date().toISOString().split("T")[0],
+  });
+
+  if (!error) {
+    setValorDespesa("");
+    setDescricaoDespesa("");
+    carregarDespesas();
+  }
+}
   const totalEntradas = entradas.reduce(
   (total, entrada) => total + Number(entrada.amount || 0),
   0
@@ -342,8 +365,61 @@ useEffect(() => {
     )}
   </div>
   </>
-) : (
+) : active === "Despesas" ? (
   <>
+        <span>FINANÇAS</span>
+    <h2>Despesas</h2>
+
+    <form onSubmit={criarDespesa} style={{ marginTop: 20 }}>
+      <input
+        type="text"
+        placeholder="Descrição da despesa"
+        value={descricaoDespesa}
+        onChange={(e) => setDescricaoDespesa(e.target.value)}
+        required
+        style={campo}
+      />
+
+      <input
+        type="number"
+        placeholder="Valor"
+        value={valorDespesa}
+        onChange={(e) => setValorDespesa(e.target.value)}
+        required
+        step="0.01"
+        style={campo}
+      />
+
+      <button type="submit" style={botao}>
+        Adicionar despesa
+      </button>
+    </form>
+
+    <div style={{ marginTop: 25 }}>
+      {despesas.length === 0 ? (
+        <p>Nenhuma despesa cadastrada.</p>
+      ) : (
+        despesas.map((despesa) => (
+          <div
+            key={despesa.id}
+            style={{
+              padding: 15,
+              marginTop: 10,
+              background: "#111",
+              border: "1px solid #222",
+              borderRadius: 10,
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <strong>{despesa.description}</strong>
+            <span>
+              R$ {Number(despesa.amount).toFixed(2).replace(".", ",")}
+            </span>
+          </div>
+        ))
+      )}
+    </div>
     <span>MÓDULO</span>
     <h2>{active}</h2>
     <p>Esta área será configurada em seguida.</p>
