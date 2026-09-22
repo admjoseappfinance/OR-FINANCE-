@@ -255,3 +255,91 @@ function Login() {
           {modoCadastro
             ? "Já tenho uma conta"
             : "Ainda não tenho uma conta"}
+        </button>
+
+        {mensagem && (
+          <p style={{ color: "#aaa", marginTop: 18 }}>{mensagem}</p>
+        )}
+      </form>
+    </div>
+  );
+}
+
+export default function App() {
+  const [usuario, setUsuario] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUsuario(data.session?.user ?? null);
+      setCarregando(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUsuario(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function sair() {
+    await supabase.auth.signOut();
+  }
+
+  if (carregando) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#050505",
+          color: "#fff",
+          display: "grid",
+          placeItems: "center",
+        }}
+      >
+        Carregando...
+      </div>
+    );
+  }
+
+  if (!usuario) {
+    return <Login />;
+  }
+
+  return <Painel email={usuario.email} sair={sair} />;
+}
+
+const campo = {
+  width: "100%",
+  padding: "13px",
+  marginTop: 12,
+  background: "#111",
+  color: "#fff",
+  border: "1px solid #292929",
+  borderRadius: 9,
+  outline: "none",
+};
+
+const botao = {
+  width: "100%",
+  padding: "13px",
+  marginTop: 18,
+  background: "#fff",
+  color: "#000",
+  border: 0,
+  borderRadius: 9,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const troca = {
+  width: "100%",
+  padding: "12px",
+  marginTop: 8,
+  background: "transparent",
+  color: "#aaa",
+  border: 0,
+  cursor: "pointer",
+};
