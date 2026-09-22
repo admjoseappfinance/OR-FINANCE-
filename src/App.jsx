@@ -90,57 +90,71 @@ function Tela({ nome }) {
 
 export default function App() {
   const [active, setActive] = useState("Início");
+  const [menuAberto, setMenuAberto] = useState(false);
+
+  function selecionar(item) {
+    setActive(item);
+    setMenuAberto(false);
+  }
 
   return (
     <div className="app">
-      <div className="layout">
-        <aside className="sidebar">
-          <div className="brand">
-            <div className="brand-logo">O</div>
-            <div>
-              <div className="brand-name">Or Finance</div>
-              <div className="brand-subtitle">FINANÇAS PESSOAIS</div>
-            </div>
+      <aside className={`sidebar ${menuAberto ? "mobile-open" : ""}`}>
+        <div className="brand">
+          <div className="brand-logo">O</div>
+          <div>
+            <div className="brand-name">Or Finance</div>
+            <div className="brand-subtitle">FINANÇAS PESSOAIS</div>
+          </div>
+        </div>
+
+        <nav className="nav">
+          {menu.map((item) => (
+            <button
+              key={item}
+              className={`nav-button ${
+                active === item ? "active" : ""
+              }`}
+              onClick={() => selecionar(item)}
+            >
+              {item}
+            </button>
+          ))}
+        </nav>
+
+        <button
+          className="settings-button"
+          onClick={() => selecionar("Configurações")}
+        >
+          Configurações
+        </button>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <button
+            className="mobile-menu"
+            onClick={() => setMenuAberto(!menuAberto)}
+          >
+            ☰
+          </button>
+
+          <div>
+            <div className="eyebrow">OR FINANCE</div>
+            <h1>{active}</h1>
           </div>
 
-          <nav className="nav">
-            {menu.map((item) => (
-              <button
-                key={item}
-                className={`nav-button ${
-                  active === item ? "active" : ""
-                }`}
-                onClick={() => setActive(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </nav>
+          <div className="profile">JC</div>
+        </header>
 
-          <button className="settings-button">
-            Configurações
-          </button>
-        </aside>
-
-        <main className="main">
-          <header className="topbar">
-            <div>
-              <div className="eyebrow">OR FINANCE</div>
-              <h1>{active}</h1>
-            </div>
-
-            <div className="profile">JC</div>
-          </header>
-
-          <section className="content">
-            {active === "Início" ? (
-              <Inicio />
-            ) : (
-              <Tela nome={active} />
-            )}
-          </section>
-        </main>
-      </div>
+        <section className="content">
+          {active === "Início" ? (
+            <Inicio />
+          ) : (
+            <Tela nome={active} />
+          )}
+        </section>
+      </main>
     </div>
   );
 }
