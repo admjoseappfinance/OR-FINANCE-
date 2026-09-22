@@ -109,6 +109,7 @@ async function carregarEntradas() {
 useEffect(() => {
   carregarContas();
   carregarEntradas();
+  carregarDespesas();
 }, []);
   const [active, setActive] = useState("Início");
   const [menuAberto, setMenuAberto] = useState(false);
