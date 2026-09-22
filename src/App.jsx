@@ -34,16 +34,17 @@ const [descricaoEntrada, setDescricaoEntrada] = useState("");
 
   const { error } = await supabase.from("incomes").insert({
     user_id: user.id,
+    account_id: "0b349e04-4bc1-4833-b79e-30968c475dd5",
     description: descricaoEntrada,
     amount: Number(valorEntrada) || 0,
-    date: new Date().toISOString().split("T")[0],
+    income_date: new Date().toISOString().split("T")[0],
   });
 
   if (!error) {
     setValorEntrada("");
     setDescricaoEntrada("");
   }
-  }
+}
   const saldoTotal = contas.reduce(
   (total, conta) => total + Number(conta.balance || 0),
   0
