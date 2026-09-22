@@ -427,7 +427,6 @@ useEffect(() => {
     <p>Esta área será configurada em seguida.</p>
   </>
 )}
-          )}
 
           <button
             onClick={sair}
