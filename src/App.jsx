@@ -23,6 +23,27 @@ function Painel({ email, sair }) {
   const [saldoConta, setSaldoConta] = useState("");
   const [valorEntrada, setValorEntrada] = useState("");
 const [descricaoEntrada, setDescricaoEntrada] = useState("");
+  async function criarEntrada(e) {
+  e.preventDefault();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  const { error } = await supabase.from("incomes").insert({
+    user_id: user.id,
+    description: descricaoEntrada,
+    amount: Number(valorEntrada) || 0,
+    date: new Date().toISOString().split("T")[0],
+  });
+
+  if (!error) {
+    setValorEntrada("");
+    setDescricaoEntrada("");
+  }
+  }
   const saldoTotal = contas.reduce(
   (total, conta) => total + Number(conta.balance || 0),
   0
