@@ -259,13 +259,43 @@ const [descricaoEntrada, setDescricaoEntrada] = useState("");
         )}
       </div>
     </>
-  ) : (
-    <>
-      <span>MÓDULO</span>
-      <h2>{active}</h2>
-      <p>Esta área será configurada em seguida.</p>
-    </>
-  )}
+  ) : active === "Entradas" ? (
+  <>
+    <span>FINANÇAS</span>
+    <h2>Entradas</h2>
+
+    <form onSubmit={criarEntrada} style={{ marginTop: 20 }}>
+      <input
+        type="text"
+        placeholder="Descrição da entrada"
+        value={descricaoEntrada}
+        onChange={(e) => setDescricaoEntrada(e.target.value)}
+        required
+        style={campo}
+      />
+
+      <input
+        type="number"
+        placeholder="Valor"
+        value={valorEntrada}
+        onChange={(e) => setValorEntrada(e.target.value)}
+        required
+        step="0.01"
+        style={campo}
+      />
+
+      <button type="submit" style={botao}>
+        Adicionar entrada
+      </button>
+    </form>
+  </>
+) : (
+  <>
+    <span>MÓDULO</span>
+    <h2>{active}</h2>
+    <p>Esta área será configurada em seguida.</p>
+  </>
+)}
 </section>
           )}
 
