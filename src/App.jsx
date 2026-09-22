@@ -46,8 +46,13 @@ const [descricaoEntrada, setDescricaoEntrada] = useState("");
     setDescricaoEntrada("");
   }
 }
-  const saldoTotal = contas.reduce(
-  (total, conta) => total + Number(conta.balance || 0),
+  const saldoTotal =
+  contas.reduce(
+    (total, conta) => total + Number(conta.balance || 0),
+    0
+  ) + totalEntradas;
+  const totalEntradas = entradas.reduce(
+  (total, entrada) => total + Number(entrada.amount || 0),
   0
 );
 
