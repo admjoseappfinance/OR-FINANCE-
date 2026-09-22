@@ -23,6 +23,7 @@ function Painel({ email, sair }) {
   const [saldoConta, setSaldoConta] = useState("");
   const [valorEntrada, setValorEntrada] = useState("");
 const [descricaoEntrada, setDescricaoEntrada] = useState("");
+  const [entradas, setEntradas] = useState([]);
   async function criarEntrada(e) {
   e.preventDefault();
 
