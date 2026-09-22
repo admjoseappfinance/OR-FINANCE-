@@ -24,10 +24,12 @@ function Painel({ email, sair }) {
 
   const [valorEntrada, setValorEntrada] = useState("");
   const [descricaoEntrada, setDescricaoEntrada] = useState("");
+  const [contaEntrada, setContaEntrada] = useState("");
   const [entradas, setEntradas] = useState([]);
 
   const [valorDespesa, setValorDespesa] = useState("");
   const [descricaoDespesa, setDescricaoDespesa] = useState("");
+  const [contaDespesa, setContaDespesa] = useState("");
   const [despesas, setDespesas] = useState([]);
 
   const [active, setActive] = useState("Início");
@@ -39,7 +41,14 @@ function Painel({ email, sair }) {
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (data) setContas(data);
+    if (data) {
+      setContas(data);
+
+      if (data.length > 0) {
+        setContaEntrada((atual) => atual || data[0].id || data[0].uuid);
+        setContaDespesa((atual) => atual || data[0].id || data[0].uuid);
+      }
+    }
   }
 
   async function carregarEntradas() {
@@ -80,11 +89,18 @@ function Painel({ email, sair }) {
       setNomeConta("");
       setSaldoConta("");
       carregarContas();
+    } else {
+      alert(error.message);
     }
   }
 
   async function criarEntrada(e) {
     e.preventDefault();
+
+    if (!contaEntrada) {
+      alert("Cadastre ou selecione uma conta.");
+      return;
+    }
 
     const {
       data: { user },
@@ -94,7 +110,7 @@ function Painel({ email, sair }) {
 
     const { error } = await supabase.from("incomes").insert({
       user_id: user.id,
-      account_id: "0b349e04-4bc1-4833-b79e-30968c475dd5",
+      account_id: contaEntrada,
       description: descricaoEntrada,
       amount: Number(valorEntrada) || 0,
       income_date: new Date().toISOString().split("T")[0],
@@ -104,11 +120,18 @@ function Painel({ email, sair }) {
       setValorEntrada("");
       setDescricaoEntrada("");
       carregarEntradas();
+    } else {
+      alert(error.message);
     }
   }
 
   async function criarDespesa(e) {
     e.preventDefault();
+
+    if (!contaDespesa) {
+      alert("Cadastre ou selecione uma conta.");
+      return;
+    }
 
     const {
       data: { user },
@@ -118,7 +141,7 @@ function Painel({ email, sair }) {
 
     const { error } = await supabase.from("expenses").insert({
       user_id: user.id,
-      account_id: "0b349e04-4bc1-4833-b79e-30968c475dd5",
+      account_id: contaDespesa,
       description: descricaoDespesa,
       amount: Number(valorDespesa) || 0,
       expense_date: new Date().toISOString().split("T")[0],
@@ -128,6 +151,8 @@ function Painel({ email, sair }) {
       setValorDespesa("");
       setDescricaoDespesa("");
       carregarDespesas();
+    } else {
+      alert(error.message);
     }
   }
 
@@ -164,6 +189,7 @@ function Painel({ email, sair }) {
       <aside className={`sidebar ${menuAberto ? "mobile-open" : ""}`}>
         <div className="brand">
           <div className="brand-logo">O</div>
+
           <div>
             <div className="brand-name">Or Finance</div>
             <div className="brand-subtitle">FINANÇAS PESSOAIS</div>
@@ -213,6 +239,7 @@ function Painel({ email, sair }) {
               <section className="hero">
                 <div>
                   <span>Saldo disponível</span>
+
                   <strong>
                     R$ {saldoTotal.toFixed(2).replace(".", ",")}
                   </strong>
@@ -226,23 +253,29 @@ function Painel({ email, sair }) {
               <div className="stats">
                 <div className="stat-card">
                   <span>Entradas</span>
+
                   <strong>
                     R$ {totalEntradas.toFixed(2).replace(".", ",")}
                   </strong>
+
                   <small>Total cadastrado</small>
                 </div>
 
                 <div className="stat-card">
                   <span>Despesas</span>
+
                   <strong>
                     R$ {totalDespesas.toFixed(2).replace(".", ",")}
                   </strong>
+
                   <small>Total cadastrado</small>
                 </div>
 
                 <div className="stat-card">
                   <span>A pagar</span>
+
                   <strong>R$ 0,00</strong>
+
                   <small>Próximos vencimentos</small>
                 </div>
               </div>
@@ -258,7 +291,9 @@ function Painel({ email, sair }) {
 
                   <div className="empty">
                     <div className="empty-icon">—</div>
+
                     <h3>Nenhuma movimentação</h3>
+
                     <p>
                       Suas entradas e despesas aparecerão aqui.
                     </p>
@@ -287,9 +322,13 @@ function Painel({ email, sair }) {
               {active === "Contas" ? (
                 <>
                   <span>FINANÇAS</span>
+
                   <h2>Minhas contas</h2>
 
-                  <form onSubmit={criarConta} style={{ marginTop: 20 }}>
+                  <form
+                    onSubmit={criarConta}
+                    style={{ marginTop: 20 }}
+                  >
                     <input
                       type="text"
                       placeholder="Nome da conta"
@@ -318,7 +357,7 @@ function Painel({ email, sair }) {
                     ) : (
                       contas.map((conta) => (
                         <div
-                          key={conta.uuid}
+                          key={conta.id || conta.uuid}
                           style={{
                             padding: 15,
                             marginTop: 10,
@@ -330,9 +369,10 @@ function Painel({ email, sair }) {
                           }}
                         >
                           <strong>{conta.name}</strong>
+
                           <span>
                             R${" "}
-                            {Number(conta.balance)
+                            {Number(conta.balance || 0)
                               .toFixed(2)
                               .replace(".", ",")}
                           </span>
@@ -344,12 +384,33 @@ function Painel({ email, sair }) {
               ) : active === "Entradas" ? (
                 <>
                   <span>FINANÇAS</span>
+
                   <h2>Entradas</h2>
 
                   <form
                     onSubmit={criarEntrada}
                     style={{ marginTop: 20 }}
                   >
+                    <select
+                      value={contaEntrada}
+                      onChange={(e) => setContaEntrada(e.target.value)}
+                      required
+                      style={campo}
+                    >
+                      <option value="">
+                        Selecione a conta
+                      </option>
+
+                      {contas.map((conta) => (
+                        <option
+                          key={conta.id || conta.uuid}
+                          value={conta.id || conta.uuid}
+                        >
+                          {conta.name}
+                        </option>
+                      ))}
+                    </select>
+
                     <input
                       type="text"
                       placeholder="Descrição da entrada"
@@ -395,10 +456,13 @@ function Painel({ email, sair }) {
                             justifyContent: "space-between",
                           }}
                         >
-                          <strong>{entrada.description}</strong>
+                          <strong>
+                            {entrada.description}
+                          </strong>
+
                           <span>
                             R${" "}
-                            {Number(entrada.amount)
+                            {Number(entrada.amount || 0)
                               .toFixed(2)
                               .replace(".", ",")}
                           </span>
@@ -410,12 +474,33 @@ function Painel({ email, sair }) {
               ) : active === "Despesas" ? (
                 <>
                   <span>FINANÇAS</span>
+
                   <h2>Despesas</h2>
 
                   <form
                     onSubmit={criarDespesa}
                     style={{ marginTop: 20 }}
                   >
+                    <select
+                      value={contaDespesa}
+                      onChange={(e) => setContaDespesa(e.target.value)}
+                      required
+                      style={campo}
+                    >
+                      <option value="">
+                        Selecione a conta
+                      </option>
+
+                      {contas.map((conta) => (
+                        <option
+                          key={conta.id || conta.uuid}
+                          value={conta.id || conta.uuid}
+                        >
+                          {conta.name}
+                        </option>
+                      ))}
+                    </select>
+
                     <input
                       type="text"
                       placeholder="Descrição da despesa"
@@ -461,10 +546,13 @@ function Painel({ email, sair }) {
                             justifyContent: "space-between",
                           }}
                         >
-                          <strong>{despesa.description}</strong>
+                          <strong>
+                            {despesa.description}
+                          </strong>
+
                           <span>
                             R${" "}
-                            {Number(despesa.amount)
+                            {Number(despesa.amount || 0)
                               .toFixed(2)
                               .replace(".", ",")}
                           </span>
@@ -476,7 +564,9 @@ function Painel({ email, sair }) {
               ) : (
                 <>
                   <span>MÓDULO</span>
+
                   <h2>{active}</h2>
+
                   <p>Esta área será configurada em seguida.</p>
                 </>
               )}
@@ -520,6 +610,7 @@ function Login() {
 
   async function entrar(e) {
     e.preventDefault();
+
     setMensagem("Aguarde...");
 
     const resultado = modoCadastro
