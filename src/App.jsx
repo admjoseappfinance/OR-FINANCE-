@@ -24,6 +24,9 @@ function Painel({ email, sair }) {
   const [valorEntrada, setValorEntrada] = useState("");
 const [descricaoEntrada, setDescricaoEntrada] = useState("");
   const [entradas, setEntradas] = useState([]);
+  const [valorDespesa, setValorDespesa] = useState("");
+const [descricaoDespesa, setDescricaoDespesa] = useState("");
+const [despesas, setDespesas] = useState([]);
   async function criarEntrada(e) {
   e.preventDefault();
 
@@ -94,6 +97,14 @@ async function carregarEntradas() {
     .order("income_date", { ascending: false });
 
   if (data) setEntradas(data);
+}
+  async function carregarDespesas() {
+  const { data } = await supabase
+    .from("expenses")
+    .select("*")
+    .order("expense_date", { ascending: false });
+
+  if (data) setDespesas(data);
 }
 useEffect(() => {
   carregarContas();
