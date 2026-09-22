@@ -21,6 +21,8 @@ function Painel({ email, sair }) {
     const [contas, setContas] = useState([]);
   const [nomeConta, setNomeConta] = useState("");
   const [saldoConta, setSaldoConta] = useState("");
+  const [valorEntrada, setValorEntrada] = useState("");
+const [descricaoEntrada, setDescricaoEntrada] = useState("");
   const saldoTotal = contas.reduce(
   (total, conta) => total + Number(conta.balance || 0),
   0
