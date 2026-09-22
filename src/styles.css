@@ -8,11 +8,17 @@
   background: #050505;
 }
 
-body {
+html,
+body,
+#root {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100%;
   background: #050505;
+}
+
+body {
+  min-height: 100vh;
 }
 
 button {
@@ -37,6 +43,7 @@ button {
   padding: 28px 18px;
   background: #080808;
   border-right: 1px solid #1d1d1d;
+  z-index: 1000;
 }
 
 .brand {
@@ -111,8 +118,12 @@ button {
   padding: 20px 42px;
   border-bottom: 1px solid #1d1d1d;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 16px;
+}
+
+.topbar > div:nth-child(2) {
+  flex: 1;
 }
 
 .topbar h1 {
@@ -130,6 +141,16 @@ button {
   place-items: center;
   color: #aaa;
   font-size: 12px;
+}
+
+.mobile-menu {
+  display: none;
+  border: 1px solid #292929;
+  border-radius: 9px;
+  background: #101010;
+  color: #fff;
+  width: 42px;
+  height: 42px;
 }
 
 .content {
@@ -170,10 +191,6 @@ button {
   background: #fff;
   color: #000;
   font-weight: 700;
-}
-
-.primary-button:hover {
-  background: #ddd;
 }
 
 .stats {
@@ -237,197 +254,104 @@ button {
 }
 
 .empty h3 {
-  margin: 10px 0 
-@media (max-width: 800px) {
-  .layout {
-    display: block;
-  }
-
-  .sidebar {
-    position: static;
-    width: 100%;
-    min-height: auto;
-  }
-
-  .main {
-    width: 100%;
-    margin-left: 0;
-  }
-
-  .stats {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .hero {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-.mobile-menu {
-  display: none;
+  margin: 10px 0 5px;
+  font-size: 16px;
 }
 
-@media (max-width: 800px) {
-  .mobile-menu {
-    display: block;
-    border: 1px solid #333;
-    background: #111;
-    color: #fff;
-    border-radius: 8px;
-    padding: 8px 11px;
-  }
+.empty p,
+.page p {
+  margin: 0;
+  color: #555;
+  font-size: 13px;
+}
 
+.quick-actions {
+  display: grid;
+  gap: 9px;
+}
+
+.quick-actions button {
+  padding: 13px;
+  border: 1px solid #252525;
+  border-radius: 9px;
+  background: #101010;
+  color: #aaa;
+  text-align: left;
+}
+
+.page {
+  min-height: 350px;
+}
+
+.page h2 {
+  font-size: 28px;
+  margin: 8px 0;
+}
+
+@media (max-width: 800px) {
   .sidebar {
-    display: none;
-    position: fixed;
-    z-index: 100;
-    top: 0;
     left: 0;
-    width: 100%;
-    height: 100vh;
-    overflow-y: auto;
-    background: #080808;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    padding: 22px 16px;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    border-right: 1px solid #222;
+    border-top: 0;
   }
 
   .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .brand {
+    display: flex;
+    padding-bottom: 28px;
+  }
+
+  .settings-button {
     display: block;
+    bottom: 25px;
+    width: calc(100% - 32px);
   }
 
   .main {
     width: 100%;
     margin-left: 0;
+    padding-bottom: 20px;
   }
 
   .topbar {
-    display: flex;
-  }
-
-  .content {
-    padding: 20px;
-  }
-
-  .stats,
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-}
-@media (max-width: 800px) {
-  .sidebar {
-    display: block !important;
-    position: static !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: auto !important;
-  }
-
-  .main {
-    width: 100% !important;
-    margin-left: 0 !important;
-  }
-
-  .nav {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-  }
-
-  .settings-button {
-    position: static !important;
-    width: 100% !important;
-  }
-
-  .content {
-    width: 100% !important;
-    padding: 16px !important;
-  }
-
-  .hero,
-  .stats,
-  .dashboard-grid {
-    width: 100% !important;
-  }
-
-  .stats,
-  .dashboard-grid {
-    grid-template-columns: 1fr !important;
-  }
-}
-
-@media (max-width: 800px) {
-  .sidebar {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    top: auto !important;
-    width: 100% !important;
-    height: 76px !important;
-    min-height: 0 !important;
-    padding: 8px !important;
-    z-index: 1000 !important;
-    border-right: 0 !important;
-    border-top: 1px solid #222 !important;
-    background: #080808 !important;
-  }
-
-  .brand,
-  .settings-button {
-    display: none !important;
-  }
-
-  .nav {
-    width: 100% !important;
-    height: 100% !important;
-    display: flex !important;
-    flex-direction: row !important;
-    justify-content: space-around !important;
-    align-items: stretch !important;
-    gap: 4px !important;
-  }
-
-  .nav-button {
-    flex: 1 !important;
-    padding: 8px 4px !important;
-    text-align: center !important;
-    font-size: 10px !important;
-    white-space: normal !important;
-  }
-
-  .main {
-    width: 100% !important;
-    margin-left: 0 !important;
-    padding-bottom: 85px !important;
-  }
-
-  .topbar {
-    height: 70px !important;
-    padding: 15px 18px !important;
+    height: 70px;
+    padding: 14px 16px;
   }
 
   .mobile-menu {
-    display: none !important;
+    display: grid;
+    place-items: center;
   }
 
   .content {
-    padding: 16px !important;
+    padding: 16px;
   }
 
   .hero {
-    padding: 22px !important;
+    min-height: 160px;
+    padding: 22px;
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .hero strong {
-    font-size: 32px !important;
+    font-size: 32px;
   }
 
   .stats {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 1fr;
   }
 
   .dashboard-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 1fr;
   }
-}
+  }
