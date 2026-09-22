@@ -46,15 +46,16 @@ const [descricaoEntrada, setDescricaoEntrada] = useState("");
     setDescricaoEntrada("");
   }
 }
-  ) + totalEntradas;
   const totalEntradas = entradas.reduce(
   (total, entrada) => total + Number(entrada.amount || 0),
   0
 );
+  
 const saldoTotal =
   contas.reduce(
     (total, conta) => total + Number(conta.balance || 0),
     0
+     ) + totalEntradas;
   async function carregarContas() {
     const { data } = await supabase
       .from("accounts")
