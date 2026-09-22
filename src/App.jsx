@@ -1,163 +1,132 @@
 import { useState } from "react";
 
-export default function App() {
-  const [activePage, setActivePage] = useState("dashboard");
+const menu = [
+  "Início",
+  "Contas",
+  "Entradas",
+  "Despesas",
+  "Contas a pagar",
+  "Cartões",
+  "Metas",
+  "Relatórios",
+];
 
-  const menu = [
-    { id: "dashboard", label: "Início", icon: "⌂" },
-    { id: "accounts", label: "Contas", icon: "◉" },
-    { id: "income", label: "Entradas", icon: "＋" },
-    { id: "expenses", label: "Despesas", icon: "−" },
-    { id: "bills", label: "Contas a pagar", icon: "▣" },
-    { id: "cards", label: "Cartões", icon: "▤" },
-    { id: "goals", label: "Metas", icon: "◇" },
-    { id: "reports", label: "Relatórios", icon: "▥" }
-  ];
+export default function App() {
+  const [active, setActive] = useState("Início");
 
   return (
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">OR</div>
-
+          <div className="brand-logo">O</div>
           <div>
-            <strong>Or Finance</strong>
-            <span>Controle financeiro</span>
+            <div className="brand-name">Or Finance</div>
+            <div className="brand-subtitle">FINANÇAS PESSOAIS</div>
           </div>
         </div>
 
-        <nav>
+        <nav className="nav">
           {menu.map((item) => (
             <button
-              key={item.id}
-              className={activePage === item.id ? "menu-item active" : "menu-item"}
-              onClick={() => setActivePage(item.id)}
+              key={item}
+              className={`nav-button ${active === item ? "active" : ""}`}
+              onClick={() => setActive(item)}
             >
-              <span className="menu-icon">{item.icon}</span>
-              <span>{item.label}</span>
+              {item}
             </button>
           ))}
         </nav>
 
-        <button
-          className="settings-button"
-          onClick={() => setActivePage("settings")}
-        >
-          ⚙ <span>Configurações</span>
-        </button>
+        <button className="settings-button">Configurações</button>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <div>
-            <span className="eyebrow">VISÃO GERAL</span>
-            <h1>
-              {activePage === "dashboard"
-                ? "Olá, seja bem-vindo"
-                : menu.find((item) => item.id === activePage)?.label ||
-                  "Configurações"}
-            </h1>
+            <div className="eyebrow">VISÃO GERAL</div>
+            <h1>{active}</h1>
           </div>
 
-          <div className="profile">
-            <div className="notification">♧</div>
-            <div className="avatar">U</div>
-          </div>
+          <div className="profile">JC</div>
         </header>
 
-        {activePage === "dashboard" ? (
-          <>
-            <section className="balance-card">
-              <div>
-                <span className="card-label">SALDO TOTAL</span>
-                <strong>R$ 0,00</strong>
-                <small>Atualizado agora</small>
+        <section className="content">
+          {active === "Início" ? (
+            <>
+              <div className="hero">
+                <div>
+                  <span>Saldo disponível</span>
+                  <strong>R$ 0,00</strong>
+                </div>
+
+                <button className="primary-button">+ Nova movimentação</button>
               </div>
 
-              <div className="balance-icon">R$</div>
-            </section>
+              <div className="stats">
+                <div className="stat-card">
+                  <span>Entradas</span>
+                  <strong>R$ 0,00</strong>
+                  <small>Este mês</small>
+                </div>
 
-            <section className="summary-grid">
-              <div className="summary-card">
-                <span>Entradas</span>
-                <strong>R$ 0,00</strong>
-                <small>Este mês</small>
+                <div className="stat-card">
+                  <span>Despesas</span>
+                  <strong>R$ 0,00</strong>
+                  <small>Este mês</small>
+                </div>
+
+                <div className="stat-card">
+                  <span>A pagar</span>
+                  <strong>R$ 0,00</strong>
+                  <small>Próximos vencimentos</small>
+                </div>
               </div>
 
-              <div className="summary-card">
-                <span>Despesas</span>
-                <strong>R$ 0,00</strong>
-                <small>Este mês</small>
-              </div>
-
-              <div className="summary-card">
-                <span>A pagar</span>
-                <strong>R$ 0,00</strong>
-                <small>Próximos vencimentos</small>
-              </div>
-            </section>
-
-            <section className="content-grid">
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <span className="eyebrow">MOVIMENTAÇÕES</span>
-                    <h2>Últimas movimentações</h2>
+              <div className="dashboard-grid">
+                <section className="panel large">
+                  <div className="panel-title">
+                    <div>
+                      <span>FLUXO FINANCEIRO</span>
+                      <h2>Movimentações recentes</h2>
+                    </div>
                   </div>
 
-                  <button>Ver todas</button>
-                </div>
-
-                <div className="empty-state">
-                  <div className="empty-icon">＋</div>
-                  <strong>Nenhuma movimentação ainda</strong>
-                  <p>
-                    Suas entradas e despesas aparecerão aqui.
-                  </p>
-                </div>
-              </div>
-
-              <div className="panel">
-                <div className="panel-header">
-                  <div>
-                    <span className="eyebrow">ACESSO RÁPIDO</span>
-                    <h2>Adicionar</h2>
+                  <div className="empty">
+                    <div className="empty-icon">—</div>
+                    <h3>Nenhuma movimentação</h3>
+                    <p>
+                      Suas entradas e despesas aparecerão aqui.
+                    </p>
                   </div>
-                </div>
+                </section>
 
-                <div className="quick-actions">
-                  <button onClick={() => setActivePage("income")}>
-                    <span>＋</span>
-                    Entrada
-                  </button>
+                <section className="panel">
+                  <div className="panel-title">
+                    <div>
+                      <span>ACESSO RÁPIDO</span>
+                      <h2>Adicionar</h2>
+                    </div>
+                  </div>
 
-                  <button onClick={() => setActivePage("expenses")}>
-                    <span>−</span>
-                    Despesa
-                  </button>
-
-                  <button onClick={() => setActivePage("bills")}>
-                    <span>▣</span>
-                    Conta
-                  </button>
-
-                  <button onClick={() => setActivePage("goals")}>
-                    <span>◇</span>
-                    Meta
-                  </button>
-                </div>
+                  <div className="quick-actions">
+                    <button>+ Entrada</button>
+                    <button>− Despesa</button>
+                    <button>+ Conta</button>
+                    <button>+ Cartão</button>
+                  </div>
+                </section>
               </div>
+            </>
+          ) : (
+            <section className="panel page">
+              <span>MÓDULO</span>
+              <h2>{active}</h2>
+              <p>
+                Esta área será configurada e conectada ao seu financeiro.
+              </p>
             </section>
-          </>
-        ) : (
-          <section className="page-placeholder">
-            <div className="placeholder-icon">OR</div>
-            <h2>{menu.find((item) => item.id === activePage)?.label || "Configurações"}</h2>
-            <p>
-              Esta área será conectada ao seu banco de dados Supabase.
-            </p>
-          </section>
-        )}
+          )}
+        </section>
       </main>
     </div>
   );
