@@ -21,6 +21,10 @@ function Painel({ email, sair }) {
     const [contas, setContas] = useState([]);
   const [nomeConta, setNomeConta] = useState("");
   const [saldoConta, setSaldoConta] = useState("");
+  const saldoTotal = contas.reduce(
+  (total, conta) => total + Number(conta.balance || 0),
+  0
+);
 
   async function carregarContas() {
     const { data } = await supabase
