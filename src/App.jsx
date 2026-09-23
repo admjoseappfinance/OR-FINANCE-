@@ -720,6 +720,113 @@ function Painel({ email, sair }) {
                     )}
                   </div>
                 </>
+              ) : active === "Relatórios" ? (
+                <>
+                  <span>FECHAMENTO</span>
+
+                  <h2>Fechamento financeiro</h2>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: 14,
+                      marginTop: 25,
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: 20,
+                        background: "#111",
+                        border: "1px solid #222",
+                        borderRadius: 12,
+                      }}
+                    >
+                      <span>Saldo atual</span>
+                      <h3 style={{ fontSize: 26 }}>
+                        R$ {totalContas
+                          .toFixed(2)
+                          .replace(".", ",")}
+                      </h3>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 20,
+                        background: "#111",
+                        border: "1px solid #222",
+                        borderRadius: 12,
+                      }}
+                    >
+                      <span>Total de entradas</span>
+                      <h3 style={{ fontSize: 26 }}>
+                        R$ {totalEntradas
+                          .toFixed(2)
+                          .replace(".", ",")}
+                      </h3>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 20,
+                        background: "#111",
+                        border: "1px solid #222",
+                        borderRadius: 12,
+                      }}
+                    >
+                      <span>Total de despesas</span>
+                      <h3 style={{ fontSize: 26 }}>
+                        R$ {totalDespesas
+                          .toFixed(2)
+                          .replace(".", ",")}
+                      </h3>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 20,
+                        background: "#111",
+                        border: "1px solid #222",
+                        borderRadius: 12,
+                      }}
+                    >
+                      <span>Resultado</span>
+                      <h3 style={{ fontSize: 26 }}>
+                        R$ {(totalEntradas - totalDespesas)
+                          .toFixed(2)
+                          .replace(".", ",")}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 25,
+                      padding: 20,
+                      background: "#111",
+                      border: "1px solid #222",
+                      borderRadius: 12,
+                    }}
+                  >
+                    <span>RESUMO</span>
+                    <p style={{ marginTop: 12 }}>
+                      Entradas: R$ {totalEntradas
+                        .toFixed(2)
+                        .replace(".", ",")}
+                    </p>
+                    <p style={{ marginTop: 8 }}>
+                      Despesas: R$ {totalDespesas
+                        .toFixed(2)
+                        .replace(".", ",")}
+                    </p>
+                    <p style={{ marginTop: 8 }}>
+                      Resultado: R$ {(totalEntradas - totalDespesas)
+                        .toFixed(2)
+                        .replace(".", ",")}
+                    </p>
+                  </div>
+                </>
               ) : (
                 <>
                   <span>MÓDULO</span>
