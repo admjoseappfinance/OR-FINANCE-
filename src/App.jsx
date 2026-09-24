@@ -19,6 +19,7 @@ const menu = [
 
 function Painel({ email, sair }) {
   const [contas, setContas] = useState([]);
+
   const [nomeConta, setNomeConta] = useState("");
   const [saldoConta, setSaldoConta] = useState("");
 
@@ -30,8 +31,14 @@ function Painel({ email, sair }) {
   const [descricaoDespesa, setDescricaoDespesa] = useState("");
   const [contaDespesa, setContaDespesa] = useState("");
 
+  const [descricaoContaPagar, setDescricaoContaPagar] = useState("");
+  const [valorContaPagar, setValorContaPagar] = useState("");
+  const [vencimentoContaPagar, setVencimentoContaPagar] = useState("");
+  const [contaPagarSelecionada, setContaPagarSelecionada] = useState("");
+
   const [entradas, setEntradas] = useState([]);
   const [despesas, setDespesas] = useState([]);
+  const [contasPagar, setContasPagar] = useState([]);
 
   const [active, setActive] = useState("Início");
   const [menuAberto, setMenuAberto] = useState(false);
@@ -78,6 +85,20 @@ function Painel({ email, sair }) {
     setDespesas(data || []);
   }
 
+  async function carregarContasPagar() {
+    const { data, error } = await supabase
+      .from("bills")
+      .select("*")
+      .order("due_date", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setContasPagar(data || []);
+  }
+
   async function criarConta(e) {
     e.preventDefault();
 
@@ -103,6 +124,7 @@ function Painel({ email, sair }) {
     setSaldoConta("");
 
     await carregarContas();
+    alert("Conta adicionada com sucesso!");
   }
 
   async function criarEntrada(e) {
@@ -153,9 +175,7 @@ function Painel({ email, sair }) {
 
     const { error: erroSaldo } = await supabase
       .from("accounts")
-      .update({
-        balance: novoSaldo,
-      })
+      .update({ balance: novoSaldo })
       .eq(colunaId, identificador);
 
     if (erroSaldo) {
@@ -221,9 +241,7 @@ function Painel({ email, sair }) {
 
     const { error: erroSaldo } = await supabase
       .from("accounts")
-      .update({
-        balance: novoSaldo,
-      })
+      .update({ balance: novoSaldo })
       .eq(colunaId, identificador);
 
     if (erroSaldo) {
@@ -241,10 +259,132 @@ function Painel({ email, sair }) {
     alert("Despesa adicionada com sucesso!");
   }
 
+  async function criarContaPagar(e) {
+    e.preventDefault();
+
+    const indice = Number(contaPagarSelecionada);
+    const contaSelecionada = contas[indice];
+
+    if (!contaSelecionada) {
+      alert("Selecione a conta.");
+      return;
+    }
+
+    const identificador =
+      contaSelecionada.id ?? contaSelecionada.uuid;
+
+    if (!identificador) {
+      alert("Não foi possível identificar esta conta.");
+      return;
+    }
+
+    if (!vencimentoContaPagar) {
+      alert("Informe a data de vencimento.");
+      return;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { error } = await supabase.from("bills").insert({
+      user_id: user.id,
+      account_id: identificador,
+      description: descricaoContaPagar,
+      amount: Number(valorContaPagar) || 0,
+      due_date: vencimentoContaPagar,
+      status: "pending",
+      recurring: false,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setDescricaoContaPagar("");
+    setValorContaPagar("");
+    setVencimentoContaPagar("");
+    setContaPagarSelecionada("");
+
+    await carregarContasPagar();
+
+    alert("Conta a pagar adicionada com sucesso!");
+  }
+
+  async function pagarConta(conta) {
+    if (conta.status === "paid") return;
+
+    const identificador =
+      conta.account_id;
+
+    const contaSelecionada = contas.find(
+      (item) =>
+        (item.id ?? item.uuid) === identificador
+    );
+
+    if (!contaSelecionada) {
+      alert("A conta bancária desta conta a pagar não foi encontrada.");
+      return;
+    }
+
+    const confirmar = window.confirm(
+      `Confirmar pagamento de "${conta.description}" no valor de R$ ${Number(
+        conta.amount || 0
+      )
+        .toFixed(2)
+        .replace(".", ",")}?`
+    );
+
+    if (!confirmar) return;
+
+    const novoSaldo =
+      Number(contaSelecionada.balance || 0) -
+      Number(conta.amount || 0);
+
+    const colunaId =
+      contaSelecionada.id !== undefined ? "id" : "uuid";
+
+    const { error: erroSaldo } = await supabase
+      .from("accounts")
+      .update({ balance: novoSaldo })
+      .eq(colunaId, identificador);
+
+    if (erroSaldo) {
+      alert(erroSaldo.message);
+      return;
+    }
+
+    const hoje = new Date()
+      .toISOString()
+      .split("T")[0];
+
+    const { error } = await supabase
+      .from("bills")
+      .update({
+        status: "paid",
+        paid_date: hoje,
+      })
+      .eq("id", conta.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await carregarContas();
+    await carregarContasPagar();
+
+    alert("Conta paga com sucesso!");
+  }
+
   useEffect(() => {
     carregarContas();
     carregarEntradas();
     carregarDespesas();
+    carregarContasPagar();
   }, []);
 
   function selecionar(item) {
@@ -269,6 +409,14 @@ function Painel({ email, sair }) {
       total + Number(despesa.amount || 0),
     0
   );
+
+  const totalPagar = contasPagar
+    .filter((conta) => conta.status !== "paid")
+    .reduce(
+      (total, conta) =>
+        total + Number(conta.amount || 0),
+      0
+    );
 
   const movimentacoes = [
     ...entradas.map((entrada) => ({
@@ -310,7 +458,10 @@ function Painel({ email, sair }) {
           <div className="brand-logo">O</div>
 
           <div>
-            <div className="brand-name">Or Finance</div>
+            <div className="brand-name">
+              Or Finance
+            </div>
+
             <div className="brand-subtitle">
               FINANÇAS PESSOAIS
             </div>
@@ -343,13 +494,18 @@ function Painel({ email, sair }) {
         <header className="topbar">
           <button
             className="mobile-menu"
-            onClick={() => setMenuAberto(!menuAberto)}
+            onClick={() =>
+              setMenuAberto(!menuAberto)
+            }
           >
             ☰
           </button>
 
           <div>
-            <div className="eyebrow">OR FINANCE</div>
+            <div className="eyebrow">
+              OR FINANCE
+            </div>
+
             <h1>{active}</h1>
           </div>
 
@@ -364,13 +520,18 @@ function Painel({ email, sair }) {
                   <span>Saldo disponível</span>
 
                   <strong>
-                    R$ {totalContas.toFixed(2).replace(".", ",")}
+                    R${" "}
+                    {totalContas
+                      .toFixed(2)
+                      .replace(".", ",")}
                   </strong>
                 </div>
 
                 <button
                   className="primary-button"
-                  onClick={() => selecionar("Entradas")}
+                  onClick={() =>
+                    selecionar("Entradas")
+                  }
                 >
                   + Nova movimentação
                 </button>
@@ -387,7 +548,9 @@ function Painel({ email, sair }) {
                       .replace(".", ",")}
                   </strong>
 
-                  <small>Total cadastrado</small>
+                  <small>
+                    Total cadastrado
+                  </small>
                 </div>
 
                 <div className="stat-card">
@@ -400,15 +563,24 @@ function Painel({ email, sair }) {
                       .replace(".", ",")}
                   </strong>
 
-                  <small>Total cadastrado</small>
+                  <small>
+                    Total cadastrado
+                  </small>
                 </div>
 
                 <div className="stat-card">
                   <span>A pagar</span>
 
-                  <strong>R$ 0,00</strong>
+                  <strong>
+                    R${" "}
+                    {totalPagar
+                      .toFixed(2)
+                      .replace(".", ",")}
+                  </strong>
 
-                  <small>Próximos vencimentos</small>
+                  <small>
+                    Contas pendentes
+                  </small>
                 </div>
               </div>
 
@@ -416,80 +588,91 @@ function Painel({ email, sair }) {
                 <section className="panel large">
                   <div className="panel-title">
                     <div>
-                      <span>FLUXO FINANCEIRO</span>
-                      <h2>Movimentações recentes</h2>
+                      <span>
+                        FLUXO FINANCEIRO
+                      </span>
+
+                      <h2>
+                        Movimentações recentes
+                      </h2>
                     </div>
                   </div>
 
                   {movimentacoes.length === 0 ? (
                     <div className="empty">
-                      <div className="empty-icon">—</div>
+                      <div className="empty-icon">
+                        —
+                      </div>
 
-                      <h3>Nenhuma movimentação</h3>
+                      <h3>
+                        Nenhuma movimentação
+                      </h3>
 
                       <p>
-                        Suas entradas e despesas aparecerão aqui.
+                        Suas entradas e despesas
+                        aparecerão aqui.
                       </p>
                     </div>
                   ) : (
                     <div>
-                      {movimentacoes.map((movimento) => (
-                        <div
-                          key={movimento.id}
-                          style={{
-                            padding: 15,
-                            marginTop: 10,
-                            background: "#111",
-                            border: "1px solid #222",
-                            borderRadius: 10,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            gap: 15,
-                          }}
-                        >
-                          <div>
-                            <strong>
-                              {movimento.descricao}
-                            </strong>
-
-                            <div
-                              style={{
-                                marginTop: 6,
-                                color: "#666",
-                                fontSize: 12,
-                              }}
-                            >
-                              {movimento.tipo}
-                              {" • "}
-                              {movimento.data
-                                ? new Date(
-                                    movimento.data +
-                                      "T00:00:00"
-                                  ).toLocaleDateString("pt-BR")
-                                : "-"}
-                            </div>
-                          </div>
-
-                          <strong
+                      {movimentacoes.map(
+                        (movimento) => (
+                          <div
+                            key={movimento.id}
                             style={{
-                              color:
-                                movimento.tipo === "Entrada"
-                                  ? "#fff"
-                                  : "#aaa",
-                              whiteSpace: "nowrap",
+                              padding: 15,
+                              marginTop: 10,
+                              background: "#111",
+                              border:
+                                "1px solid #222",
+                              borderRadius: 10,
+                              display: "flex",
+                              justifyContent:
+                                "space-between",
+                              alignItems: "center",
+                              gap: 15,
                             }}
                           >
-                            {movimento.tipo === "Entrada"
-                              ? "+"
-                              : "-"}{" "}
-                            R${" "}
-                            {movimento.valor
-                              .toFixed(2)
-                              .replace(".", ",")}
-                          </strong>
-                        </div>
-                      ))}
+                            <div>
+                              <strong>
+                                {movimento.descricao}
+                              </strong>
+
+                              <div
+                                style={{
+                                  color: "#666",
+                                  fontSize: 12,
+                                  marginTop: 5,
+                                }}
+                              >
+                                {movimento.tipo} •{" "}
+                                {movimento.data
+                                  ? new Date(
+                                      movimento.data +
+                                        "T00:00:00"
+                                    ).toLocaleDateString(
+                                      "pt-BR"
+                                    )
+                                  : ""}
+                              </div>
+                            </div>
+
+                            <strong>
+                              {movimento.tipo ===
+                              "Entrada"
+                                ? "+"
+                                : "-"}{" "}
+                              R${" "}
+                              {movimento.valor
+                                .toFixed(2)
+                                .replace(
+                                  ".",
+                                  ","
+                                )}
+                            </strong>
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
                 </section>
@@ -497,32 +680,43 @@ function Painel({ email, sair }) {
                 <section className="panel">
                   <div className="panel-title">
                     <div>
-                      <span>ACESSO RÁPIDO</span>
+                      <span>
+                        ACESSO RÁPIDO
+                      </span>
+
                       <h2>Adicionar</h2>
                     </div>
                   </div>
 
                   <div className="quick-actions">
                     <button
-                      onClick={() => selecionar("Entradas")}
+                      onClick={() =>
+                        selecionar("Entradas")
+                      }
                     >
                       + Entrada
                     </button>
 
                     <button
-                      onClick={() => selecionar("Despesas")}
+                      onClick={() =>
+                        selecionar("Despesas")
+                      }
                     >
                       − Despesa
                     </button>
 
                     <button
-                      onClick={() => selecionar("Contas")}
+                      onClick={() =>
+                        selecionar("Contas")
+                      }
                     >
                       + Conta
                     </button>
 
                     <button
-                      onClick={() => selecionar("Cartões")}
+                      onClick={() =>
+                        selecionar("Cartões")
+                      }
                     >
                       + Cartão
                     </button>
@@ -547,7 +741,9 @@ function Painel({ email, sair }) {
                       placeholder="Nome da conta"
                       value={nomeConta}
                       onChange={(e) =>
-                        setNomeConta(e.target.value)
+                        setNomeConta(
+                          e.target.value
+                        )
                       }
                       required
                       style={campo}
@@ -558,7 +754,9 @@ function Painel({ email, sair }) {
                       placeholder="Saldo inicial"
                       value={saldoConta}
                       onChange={(e) =>
-                        setSaldoConta(e.target.value)
+                        setSaldoConta(
+                          e.target.value
+                        )
                       }
                       step="0.01"
                       style={campo}
@@ -574,38 +772,49 @@ function Painel({ email, sair }) {
 
                   <div style={{ marginTop: 25 }}>
                     {contas.length === 0 ? (
-                      <p>Nenhuma conta cadastrada.</p>
+                      <p>
+                        Nenhuma conta cadastrada.
+                      </p>
                     ) : (
-                      contas.map((conta, index) => (
-                        <div
-                          key={
-                            conta.id ??
-                            conta.uuid ??
-                            index
-                          }
-                          style={{
-                            padding: 15,
-                            marginTop: 10,
-                            background: "#111",
-                            border: "1px solid #222",
-                            borderRadius: 10,
-                            display: "flex",
-                            justifyContent:
-                              "space-between",
-                          }}
-                        >
-                          <strong>{conta.name}</strong>
+                      contas.map(
+                        (conta, index) => (
+                          <div
+                            key={
+                              conta.id ??
+                              conta.uuid ??
+                              index
+                            }
+                            style={{
+                              padding: 15,
+                              marginTop: 10,
+                              background: "#111",
+                              border:
+                                "1px solid #222",
+                              borderRadius: 10,
+                              display: "flex",
+                              justifyContent:
+                                "space-between",
+                            }}
+                          >
+                            <strong>
+                              {conta.name}
+                            </strong>
 
-                          <span>
-                            R${" "}
-                            {Number(
-                              conta.balance || 0
-                            )
-                              .toFixed(2)
-                              .replace(".", ",")}
-                          </span>
-                        </div>
-                      ))
+                            <span>
+                              R${" "}
+                              {Number(
+                                conta.balance ||
+                                  0
+                              )
+                                .toFixed(2)
+                                .replace(
+                                  ".",
+                                  ","
+                                )}
+                            </span>
+                          </div>
+                        )
+                      )
                     )}
                   </div>
                 </>
@@ -622,7 +831,9 @@ function Painel({ email, sair }) {
                     <select
                       value={contaEntrada}
                       onChange={(e) =>
-                        setContaEntrada(e.target.value)
+                        setContaEntrada(
+                          e.target.value
+                        )
                       }
                       required
                       style={campo}
@@ -631,18 +842,20 @@ function Painel({ email, sair }) {
                         Selecione a conta
                       </option>
 
-                      {contas.map((conta, index) => (
-                        <option
-                          key={
-                            conta.id ??
-                            conta.uuid ??
-                            index
-                          }
-                          value={index}
-                        >
-                          {conta.name}
-                        </option>
-                      ))}
+                      {contas.map(
+                        (conta, index) => (
+                          <option
+                            key={
+                              conta.id ??
+                              conta.uuid ??
+                              index
+                            }
+                            value={index}
+                          >
+                            {conta.name}
+                          </option>
+                        )
+                      )}
                     </select>
 
                     <input
@@ -663,7 +876,9 @@ function Painel({ email, sair }) {
                       placeholder="Valor"
                       value={valorEntrada}
                       onChange={(e) =>
-                        setValorEntrada(e.target.value)
+                        setValorEntrada(
+                          e.target.value
+                        )
                       }
                       required
                       step="0.01"
@@ -680,72 +895,65 @@ function Painel({ email, sair }) {
 
                   <div style={{ marginTop: 25 }}>
                     {entradas.length === 0 ? (
-                      <p>Nenhuma entrada cadastrada.</p>
+                      <p>
+                        Nenhuma entrada cadastrada.
+                      </p>
                     ) : (
-                      entradas.map((entrada) => {
-                        const conta = contas.find(
-                          (c) =>
-                            (c.id ?? c.uuid) ===
-                            entrada.account_id
-                        );
-
-                        return (
+                      entradas.map(
+                        (entrada) => (
                           <div
                             key={entrada.id}
                             style={{
                               padding: 15,
                               marginTop: 10,
                               background: "#111",
-                              border: "1px solid #222",
+                              border:
+                                "1px solid #222",
                               borderRadius: 10,
+                              display: "flex",
+                              justifyContent:
+                                "space-between",
                             }}
                           >
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent:
-                                  "space-between",
-                                gap: 15,
-                              }}
-                            >
+                            <div>
                               <strong>
                                 {entrada.description}
                               </strong>
 
-                              <strong>
-                                R${" "}
-                                {Number(
-                                  entrada.amount || 0
-                                )
-                                  .toFixed(2)
-                                  .replace(".", ",")}
-                              </strong>
+                              <small
+                                style={{
+                                  display:
+                                    "block",
+                                  color: "#666",
+                                  marginTop: 5,
+                                }}
+                              >
+                                {entrada.income_date
+                                  ? new Date(
+                                      entrada.income_date +
+                                        "T00:00:00"
+                                    ).toLocaleDateString(
+                                      "pt-BR"
+                                    )
+                                  : ""}
+                              </small>
                             </div>
 
-                            <div
-                              style={{
-                                marginTop: 10,
-                                color: "#777",
-                                fontSize: 12,
-                              }}
-                            >
-                              Data:{" "}
-                              {entrada.income_date
-                                ? new Date(
-                                    entrada.income_date +
-                                      "T00:00:00"
-                                  ).toLocaleDateString(
-                                    "pt-BR"
-                                  )
-                                : "-"}
-                              <br />
-                              Conta:{" "}
-                              {conta?.name ||
-                                "Conta não identificada"}
-                            </div>
+                            <span>
+                              R${" "}
+                              {Number(
+                                entrada.amount ||
+                                  0
+                              )
+                                .toFixed(2)
+                                .replace(
+                                  ".",
+                                  ","
+                                )}
+                            </span>
                           </div>
-                        );
-                      })
+                        )
+                      )
                     )}
                   </div>
                 </>
@@ -762,7 +970,9 @@ function Painel({ email, sair }) {
                     <select
                       value={contaDespesa}
                       onChange={(e) =>
-                        setContaDespesa(e.target.value)
+                        setContaDespesa(
+                          e.target.value
+                        )
                       }
                       required
                       style={campo}
@@ -771,18 +981,20 @@ function Painel({ email, sair }) {
                         Selecione a conta
                       </option>
 
-                      {contas.map((conta, index) => (
-                        <option
-                          key={
-                            conta.id ??
-                            conta.uuid ??
-                            index
-                          }
-                          value={index}
-                        >
-                          {conta.name}
-                        </option>
-                      ))}
+                      {contas.map(
+                        (conta, index) => (
+                          <option
+                            key={
+                              conta.id ??
+                              conta.uuid ??
+                              index
+                            }
+                            value={index}
+                          >
+                            {conta.name}
+                          </option>
+                        )
+                      )}
                     </select>
 
                     <input
@@ -803,7 +1015,9 @@ function Painel({ email, sair }) {
                       placeholder="Valor"
                       value={valorDespesa}
                       onChange={(e) =>
-                        setValorDespesa(e.target.value)
+                        setValorDespesa(
+                          e.target.value
+                        )
                       }
                       required
                       step="0.01"
@@ -820,57 +1034,39 @@ function Painel({ email, sair }) {
 
                   <div style={{ marginTop: 25 }}>
                     {despesas.length === 0 ? (
-                      <p>Nenhuma despesa cadastrada.</p>
+                      <p>
+                        Nenhuma despesa cadastrada.
+                      </p>
                     ) : (
-                      despesas.map((despesa) => {
-                        const conta = contas.find(
-                          (c) =>
-                            (c.id ?? c.uuid) ===
-                            despesa.account_id
-                        );
-
-                        return (
+                      despesas.map(
+                        (despesa) => (
                           <div
                             key={despesa.id}
                             style={{
                               padding: 15,
                               marginTop: 10,
                               background: "#111",
-                              border: "1px solid #222",
+                              border:
+                                "1px solid #222",
                               borderRadius: 10,
+                              display: "flex",
+                              justifyContent:
+                                "space-between",
                             }}
                           >
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent:
-                                  "space-between",
-                                gap: 15,
-                              }}
-                            >
+                            <div>
                               <strong>
                                 {despesa.description}
                               </strong>
 
-                              <strong>
-                                R${" "}
-                                {Number(
-                                  despesa.amount || 0
-                                )
-                                  .toFixed(2)
-                                  .replace(".", ",")}
-                              </strong>
-                            </div>
-
-                            <div
-                              style={{
-                                marginTop: 10,
-                                color: "#777",
-                                fontSize: 12,
-                              }}
-                            >
-                              <div>
-                                Data:{" "}
+                              <small
+                                style={{
+                                  display:
+                                    "block",
+                                  color: "#666",
+                                  marginTop: 5,
+                                }}
+                              >
                                 {despesa.expense_date
                                   ? new Date(
                                       despesa.expense_date +
@@ -878,18 +1074,255 @@ function Painel({ email, sair }) {
                                     ).toLocaleDateString(
                                       "pt-BR"
                                     )
-                                  : "-"}
-                              </div>
+                                  : ""}
+                              </small>
+                            </div>
 
-                              <div style={{ marginTop: 5 }}>
-                                Conta:{" "}
-                                {conta?.name ||
-                                  "Conta não identificada"}
+                            <span>
+                              R${" "}
+                              {Number(
+                                despesa.amount ||
+                                  0
+                              )
+                                .toFixed(2)
+                                .replace(
+                                  ".",
+                                  ","
+                                )}
+                            </span>
+                          </div>
+                        )
+                      )
+                    )}
+                  </div>
+                </>
+              ) : active === "Contas a pagar" ? (
+                <>
+                  <span>FINANÇAS</span>
+
+                  <h2>Contas a pagar</h2>
+
+                  <form
+                    onSubmit={criarContaPagar}
+                    style={{ marginTop: 20 }}
+                  >
+                    <select
+                      value={
+                        contaPagarSelecionada
+                      }
+                      onChange={(e) =>
+                        setContaPagarSelecionada(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={campo}
+                    >
+                      <option value="">
+                        Selecione a conta
+                      </option>
+
+                      {contas.map(
+                        (conta, index) => (
+                          <option
+                            key={
+                              conta.id ??
+                              conta.uuid ??
+                              index
+                            }
+                            value={index}
+                          >
+                            {conta.name}
+                          </option>
+                        )
+                      )}
+                    </select>
+
+                    <input
+                      type="text"
+                      placeholder="Descrição da conta"
+                      value={
+                        descricaoContaPagar
+                      }
+                      onChange={(e) =>
+                        setDescricaoContaPagar(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={campo}
+                    />
+
+                    <input
+                      type="number"
+                      placeholder="Valor"
+                      value={valorContaPagar}
+                      onChange={(e) =>
+                        setValorContaPagar(
+                          e.target.value
+                        )
+                      }
+                      required
+                      step="0.01"
+                      min="0"
+                      style={campo}
+                    />
+
+                    <input
+                      type="date"
+                      value={
+                        vencimentoContaPagar
+                      }
+                      onChange={(e) =>
+                        setVencimentoContaPagar(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={campo}
+                    />
+
+                    <button
+                      type="submit"
+                      style={botao}
+                    >
+                      Adicionar conta a pagar
+                    </button>
+                  </form>
+
+                  <div style={{ marginTop: 25 }}>
+                    {contasPagar.length === 0 ? (
+                      <p>
+                        Nenhuma conta a pagar
+                        cadastrada.
+                      </p>
+                    ) : (
+                      contasPagar.map(
+                        (conta) => {
+                          const paga =
+                            conta.status ===
+                            "paid";
+
+                          return (
+                            <div
+                              key={conta.id}
+                              style={{
+                                padding: 18,
+                                marginTop: 10,
+                                background:
+                                  "#111",
+                                border:
+                                  "1px solid #222",
+                                borderRadius: 10,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display:
+                                    "flex",
+                                  justifyContent:
+                                    "space-between",
+                                  alignItems:
+                                    "center",
+                                  gap: 15,
+                                }}
+                              >
+                                <div>
+                                  <strong>
+                                    {
+                                      conta.description
+                                    }
+                                  </strong>
+
+                                  <div
+                                    style={{
+                                      color:
+                                        "#666",
+                                      fontSize: 12,
+                                      marginTop: 6,
+                                    }}
+                                  >
+                                    Vencimento:{" "}
+                                    {conta.due_date
+                                      ? new Date(
+                                          conta.due_date +
+                                            "T00:00:00"
+                                        ).toLocaleDateString(
+                                          "pt-BR"
+                                        )
+                                      : "-"}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      color:
+                                        paga
+                                          ? "#777"
+                                          : "#aaa",
+                                      fontSize: 12,
+                                      marginTop: 4,
+                                    }}
+                                  >
+                                    Status:{" "}
+                                    {paga
+                                      ? "Paga"
+                                      : "Pendente"}
+                                  </div>
+                                </div>
+
+                                <div
+                                  style={{
+                                    textAlign:
+                                      "right",
+                                  }}
+                                >
+                                  <strong>
+                                    R${" "}
+                                    {Number(
+                                      conta.amount ||
+                                        0
+                                    )
+                                      .toFixed(2)
+                                      .replace(
+                                        ".",
+                                        ","
+                                      )}
+                                  </strong>
+
+                                  {!paga && (
+                                    <button
+                                      onClick={() =>
+                                        pagarConta(
+                                          conta
+                                        )
+                                      }
+                                      style={{
+                                        display:
+                                          "block",
+                                        marginTop:
+                                          10,
+                                        padding:
+                                          "9px 12px",
+                                        background:
+                                          "#fff",
+                                        color:
+                                          "#000",
+                                        border: 0,
+                                        borderRadius:
+                                          7,
+                                        fontWeight:
+                                          700,
+                                      }}
+                                    >
+                                      Pagar
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })
+                          );
+                        }
+                      )
                     )}
                   </div>
                 </>
@@ -897,7 +1330,9 @@ function Painel({ email, sair }) {
                 <>
                   <span>FECHAMENTO</span>
 
-                  <h2>Fechamento financeiro</h2>
+                  <h2>
+                    Fechamento financeiro
+                  </h2>
 
                   <div
                     style={{
@@ -908,71 +1343,104 @@ function Painel({ email, sair }) {
                       marginTop: 25,
                     }}
                   >
-                    <div style={cardResumo}>
-                      <span>Saldo atual</span>
-                      <h3 style={{ fontSize: 26 }}>
-                        R${" "}
-                        {totalContas
-                          .toFixed(2)
-                          .replace(".", ",")}
-                      </h3>
-                    </div>
+                    <Resumo
+                      titulo="Saldo atual"
+                      valor={totalContas}
+                    />
 
-                    <div style={cardResumo}>
-                      <span>Total de entradas</span>
-                      <h3 style={{ fontSize: 26 }}>
-                        R${" "}
-                        {totalEntradas
-                          .toFixed(2)
-                          .replace(".", ",")}
-                      </h3>
-                    </div>
+                    <Resumo
+                      titulo="Total de entradas"
+                      valor={totalEntradas}
+                    />
 
-                    <div style={cardResumo}>
-                      <span>Total de despesas</span>
-                      <h3 style={{ fontSize: 26 }}>
-                        R${" "}
-                        {totalDespesas
-                          .toFixed(2)
-                          .replace(".", ",")}
-                      </h3>
-                    </div>
+                    <Resumo
+                      titulo="Total de despesas"
+                      valor={totalDespesas}
+                    />
 
-                    <div style={cardResumo}>
-                      <span>Resultado</span>
-                      <h3 style={{ fontSize: 26 }}>
-                        R${" "}
-                        {(totalEntradas -
-                          totalDespesas)
-                          .toFixed(2)
-                          .replace(".", ",")}
-                      </h3>
-                    </div>
+                    <Resumo
+                      titulo="Contas a pagar"
+                      valor={totalPagar}
+                    />
+
+                    <Resumo
+                      titulo="Resultado"
+                      valor={
+                        totalEntradas -
+                        totalDespesas
+                      }
+                    />
                   </div>
 
-                  <div style={cardResumoGrande}>
+                  <div
+                    style={{
+                      marginTop: 25,
+                      padding: 20,
+                      background: "#111",
+                      border:
+                        "1px solid #222",
+                      borderRadius: 12,
+                    }}
+                  >
                     <span>RESUMO</span>
 
-                    <p style={{ marginTop: 12 }}>
+                    <p
+                      style={{
+                        marginTop: 12,
+                      }}
+                    >
                       Entradas: R${" "}
                       {totalEntradas
                         .toFixed(2)
-                        .replace(".", ",")}
+                        .replace(
+                          ".",
+                          ","
+                        )}
                     </p>
 
-                    <p style={{ marginTop: 8 }}>
+                    <p
+                      style={{
+                        marginTop: 8,
+                      }}
+                    >
                       Despesas: R${" "}
                       {totalDespesas
                         .toFixed(2)
-                        .replace(".", ",")}
+                        .replace(
+                          ".",
+                          ","
+                        )}
                     </p>
 
-                    <p style={{ marginTop: 8 }}>
-                      Resultado: R${" "}
-                      {(totalEntradas -
-                        totalDespesas)
+                    <p
+                      style={{
+                        marginTop: 8,
+                      }}
+                    >
+                      Contas a pagar: R${" "}
+                      {totalPagar
                         .toFixed(2)
-                        .replace(".", ",")}
+                        .replace(
+                          ".",
+                          ","
+                        )}
+                    </p>
+
+                    <p
+                      style={{
+                        marginTop: 8,
+                      }}
+                    >
+                      Resultado: R${" "}
+                      {(
+                        totalEntradas -
+                        totalDespesas
+                      )
+                        .toFixed(2)
+                        .replace(
+                          ".",
+                          ","
+                        )}
                     </p>
                   </div>
                 </>
@@ -983,7 +1451,8 @@ function Painel({ email, sair }) {
                   <h2>{active}</h2>
 
                   <p>
-                    Esta área será configurada em seguida.
+                    Esta área será configurada
+                    em seguida.
                   </p>
                 </>
               )}
@@ -1019,6 +1488,28 @@ function Painel({ email, sair }) {
   );
 }
 
+function Resumo({ titulo, valor }) {
+  return (
+    <div
+      style={{
+        padding: 20,
+        background: "#111",
+        border: "1px solid #222",
+        borderRadius: 12,
+      }}
+    >
+      <span>{titulo}</span>
+
+      <h3 style={{ fontSize: 26 }}>
+        R${" "}
+        {Number(valor || 0)
+          .toFixed(2)
+          .replace(".", ",")}
+      </h3>
+    </div>
+  );
+}
+
 function Login() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -1042,7 +1533,9 @@ function Login() {
         });
 
     if (resultado.error) {
-      setMensagem(resultado.error.message);
+      setMensagem(
+        resultado.error.message
+      );
     } else {
       setMensagem(
         modoCadastro
@@ -1109,13 +1602,17 @@ function Login() {
           type="submit"
           style={botao}
         >
-          {modoCadastro ? "Criar conta" : "Entrar"}
+          {modoCadastro
+            ? "Criar conta"
+            : "Entrar"}
         </button>
 
         <button
           type="button"
           onClick={() => {
-            setModoCadastro(!modoCadastro);
+            setModoCadastro(
+              !modoCadastro
+            );
             setMensagem("");
           }}
           style={troca}
@@ -1141,7 +1638,9 @@ function Login() {
 }
 
 export default function App() {
-  const [usuario, setUsuario] = useState(null);
+  const [usuario, setUsuario] =
+    useState(null);
+
   const [carregando, setCarregando] =
     useState(true);
 
@@ -1236,19 +1735,4 @@ const troca = {
   color: "#aaa",
   border: 0,
   cursor: "pointer",
-};
-
-const cardResumo = {
-  padding: 20,
-  background: "#111",
-  border: "1px solid #222",
-  borderRadius: 12,
-};
-
-const cardResumoGrande = {
-  marginTop: 25,
-  padding: 20,
-  background: "#111",
-  border: "1px solid #222",
-  borderRadius: 12,
 };
