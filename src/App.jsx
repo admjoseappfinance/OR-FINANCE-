@@ -623,9 +623,7 @@ function Painel({ email, sair }) {
                     <select
                       value={contaDespesa}
                       onChange={(e) =>
-                        setContaDespesa(
-                          e.target.value
-                        )
+                        setContaDespesa(e.target.value)
                       }
                       required
                       style={campo}
@@ -683,40 +681,91 @@ function Painel({ email, sair }) {
                     </button>
                   </form>
 
-                  <div style={{ marginTop: 25 }}>
+                  <div style={{ marginTop: 30 }}>
+                    <span>HISTÓRICO</span>
+
+                    <h3 style={{ marginTop: 8 }}>
+                      Despesas registradas
+                    </h3>
+
                     {despesas.length === 0 ? (
-                      <p>
+                      <p style={{ marginTop: 15 }}>
                         Nenhuma despesa cadastrada.
                       </p>
                     ) : (
-                      despesas.map((despesa) => (
-                        <div
-                          key={despesa.id}
-                          style={{
-                            padding: 15,
-                            marginTop: 10,
-                            background: "#111",
-                            border: "1px solid #222",
-                            borderRadius: 10,
-                            display: "flex",
-                            justifyContent:
-                              "space-between",
-                          }}
-                        >
-                          <strong>
-                            {despesa.description}
-                          </strong>
+                      despesas.map((despesa) => {
+                        const conta = contas.find(
+                          (c) =>
+                            (c.id ?? c.uuid) ===
+                            despesa.account_id
+                        );
 
-                          <span>
-                            R${" "}
-                            {Number(
-                              despesa.amount || 0
-                            )
-                              .toFixed(2)
-                              .replace(".", ",")}
-                          </span>
-                        </div>
-                      ))
+                        return (
+                          <div
+                            key={despesa.id}
+                            style={{
+                              padding: 16,
+                              marginTop: 12,
+                              background: "#111",
+                              border: "1px solid #222",
+                              borderRadius: 10,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent:
+                                  "space-between",
+                                alignItems: "center",
+                                gap: 15,
+                              }}
+                            >
+                              <strong>
+                                {despesa.description}
+                              </strong>
+
+                              <strong>
+                                R${" "}
+                                {Number(
+                                  despesa.amount || 0
+                                )
+                                  .toFixed(2)
+                                  .replace(".", ",")}
+                              </strong>
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 10,
+                                color: "#777",
+                                fontSize: 12,
+                              }}
+                            >
+                              <div>
+                                Data:{" "}
+                                {despesa.expense_date
+                                  ? new Date(
+                                      despesa.expense_date +
+                                        "T00:00:00"
+                                    ).toLocaleDateString(
+                                      "pt-BR"
+                                    )
+                                  : "-"}
+                              </div>
+
+                              <div
+                                style={{
+                                  marginTop: 5,
+                                }}
+                              >
+                                Conta:{" "}
+                                {conta?.name ||
+                                  "Conta não identificada"}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 </>
@@ -744,6 +793,7 @@ function Painel({ email, sair }) {
                       }}
                     >
                       <span>Saldo atual</span>
+
                       <h3 style={{ fontSize: 26 }}>
                         R$ {totalContas
                           .toFixed(2)
@@ -760,6 +810,7 @@ function Painel({ email, sair }) {
                       }}
                     >
                       <span>Total de entradas</span>
+
                       <h3 style={{ fontSize: 26 }}>
                         R$ {totalEntradas
                           .toFixed(2)
@@ -776,6 +827,7 @@ function Painel({ email, sair }) {
                       }}
                     >
                       <span>Total de despesas</span>
+
                       <h3 style={{ fontSize: 26 }}>
                         R$ {totalDespesas
                           .toFixed(2)
@@ -792,6 +844,7 @@ function Painel({ email, sair }) {
                       }}
                     >
                       <span>Resultado</span>
+
                       <h3 style={{ fontSize: 26 }}>
                         R$ {(totalEntradas - totalDespesas)
                           .toFixed(2)
@@ -810,16 +863,19 @@ function Painel({ email, sair }) {
                     }}
                   >
                     <span>RESUMO</span>
+
                     <p style={{ marginTop: 12 }}>
                       Entradas: R$ {totalEntradas
                         .toFixed(2)
                         .replace(".", ",")}
                     </p>
+
                     <p style={{ marginTop: 8 }}>
                       Despesas: R$ {totalDespesas
                         .toFixed(2)
                         .replace(".", ",")}
                     </p>
+
                     <p style={{ marginTop: 8 }}>
                       Resultado: R$ {(totalEntradas - totalDespesas)
                         .toFixed(2)
@@ -870,7 +926,6 @@ function Painel({ email, sair }) {
     </div>
   );
 }
-
 function Login() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
