@@ -52,6 +52,7 @@ function Painel({ email, sair }) {
   const [vencimentoCartao, setVencimentoCartao] = useState("");
   const [bandeiraCartao, setBandeiraCartao] = useState("");
   const [corCartao, setCorCartao] = useState("#ffffff");
+  const [cartaoEditando, setCartaoEditando] = useState(null);
 
   const [cartaoCompra, setCartaoCompra] = useState("");
   const [descricaoCompra, setDescricaoCompra] = useState("");
@@ -472,6 +473,74 @@ function Painel({ email, sair }) {
     await carregarCartoes();
 
     alert("Cartão adicionado com sucesso!");
+  }
+
+  function iniciarEdicaoCartao(cartao) {
+    setCartaoEditando(cartao);
+    setNomeCartao(cartao.name || "");
+    setBancoCartao(cartao.bank_name || "");
+    setUltimosQuatro(cartao.last_four_digits || "");
+    setLimiteCartao(cartao.credit_limit ?? "");
+    setLimiteDisponivel(cartao.available_limit ?? "");
+    setFechamentoCartao(cartao.closing_day ?? "");
+    setVencimentoCartao(cartao.due_day ?? "");
+    setBandeiraCartao(cartao.brand || "");
+    setCorCartao(cartao.color || "#ffffff");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelarEdicaoCartao() {
+    setCartaoEditando(null);
+    setNomeCartao("");
+    setBancoCartao("");
+    setUltimosQuatro("");
+    setLimiteCartao("");
+    setLimiteDisponivel("");
+    setFechamentoCartao("");
+    setVencimentoCartao("");
+    setBandeiraCartao("");
+    setCorCartao("#ffffff");
+  }
+
+  async function salvarEdicaoCartao(e) {
+    e.preventDefault();
+
+    if (!cartaoEditando) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const limite = Number(limiteCartao) || 0;
+    const disponivel =
+      limiteDisponivel === ""
+        ? limite
+        : Number(limiteDisponivel) || 0;
+
+    const { error } = await supabase
+      .from("cards")
+      .update({
+        name: nomeCartao,
+        bank_name: bancoCartao || null,
+        last_four_digits: ultimosQuatro || null,
+        credit_limit: limite,
+        available_limit: disponivel,
+        closing_day: fechamentoCartao ? Number(fechamentoCartao) : null,
+        due_day: vencimentoCartao ? Number(vencimentoCartao) : null,
+        brand: bandeiraCartao || null,
+        color: corCartao || "#ffffff",
+      })
+      .eq("id", cartaoEditando.id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    cancelarEdicaoCartao();
+    await carregarCartoes();
+    alert("Cartão atualizado com sucesso!");
   }
 
   function adicionarMes(data, quantidade) {
@@ -1634,7 +1703,7 @@ function Painel({ email, sair }) {
                   <h2>Meus cartões</h2>
 
                   <form
-                    onSubmit={criarCartao}
+                    onSubmit={cartaoEditando ? salvarEdicaoCartao : criarCartao}
                     style={{ marginTop: 20 }}
                   >
                     <input
@@ -1782,8 +1851,23 @@ function Painel({ email, sair }) {
                       type="submit"
                       style={botao}
                     >
-                      Adicionar cartão
+                      {cartaoEditando ? "Salvar alterações" : "Adicionar cartão"}
                     </button>
+
+                    {cartaoEditando && (
+                      <button
+                        type="button"
+                        onClick={cancelarEdicaoCartao}
+                        style={{
+                          ...troca,
+                          marginTop: 6,
+                          border: "1px solid #292929",
+                          borderRadius: 9,
+                        }}
+                      >
+                        Cancelar edição
+                      </button>
+                    )}
                   </form>
 
                   <div style={{ marginTop: 35 }}>
@@ -1840,17 +1924,38 @@ function Painel({ email, sair }) {
                                 </div>
                               </div>
 
-                              <span
+                              <div
                                 style={{
-                                  width: 14,
-                                  height: 14,
-                                  borderRadius:
-                                    "50%",
-                                  background:
-                                    cartao.color ||
-                                    "#fff",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 10,
                                 }}
-                              />
+                              >
+                                <span
+                                  style={{
+                                    width: 14,
+                                    height: 14,
+                                    borderRadius: "50%",
+                                    background: cartao.color || "#fff",
+                                  }}
+                                />
+
+                                <button
+                                  type="button"
+                                  onClick={() => iniciarEdicaoCartao(cartao)}
+                                  style={{
+                                    padding: "8px 12px",
+                                    background: "#fff",
+                                    color: "#000",
+                                    border: 0,
+                                    borderRadius: 7,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Editar
+                                </button>
+                              </div>
                             </div>
 
                             <div
@@ -2805,4 +2910,4 @@ const itemStyle = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: 15,
-};
+}
