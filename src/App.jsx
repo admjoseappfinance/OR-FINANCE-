@@ -53,6 +53,8 @@ function Painel({ email, sair }) {
   const [bandeiraCartao, setBandeiraCartao] = useState("");
   const [corCartao, setCorCartao] = useState("#ffffff");
   const [cartaoEditando, setCartaoEditando] = useState(null);
+  const [contasFaturaSelecionadas, setContasFaturaSelecionadas] = useState({});
+  const [contasParcelaSelecionadas, setContasParcelaSelecionadas] = useState({});
 
   const [cartaoCompra, setCartaoCompra] = useState("");
   const [descricaoCompra, setDescricaoCompra] = useState("");
@@ -421,6 +423,183 @@ function Painel({ email, sair }) {
     alert("Conta paga com sucesso!");
   }
 
+  async function pagarFatura(fatura) {
+    if (fatura.status === "paid") return;
+
+    const contaId = contasFaturaSelecionadas[fatura.id];
+    const contaSelecionada = contas.find(
+      (item) => String(item.id ?? item.uuid) === String(contaId)
+    );
+
+    if (!contaSelecionada) {
+      alert("Selecione a conta bancária que será usada para pagar a fatura.");
+      return;
+    }
+
+    const restante = Math.max(
+      0,
+      Number(fatura.total_amount || 0) - Number(fatura.paid_amount || 0)
+    );
+
+    if (restante <= 0) return;
+
+    const confirmar = window.confirm(
+      `Confirmar pagamento da fatura no valor de R$ ${restante.toFixed(2).replace(".", ",")}?`
+    );
+
+    if (!confirmar) return;
+
+    const novoSaldo = Number(contaSelecionada.balance || 0) - restante;
+
+    const colunaId = contaSelecionada.id !== undefined ? "id" : "uuid";
+
+    const { error: erroSaldo } = await supabase
+      .from("accounts")
+      .update({ balance: novoSaldo })
+      .eq(colunaId, contaId);
+
+    if (erroSaldo) {
+      alert(erroSaldo.message);
+      return;
+    }
+
+    const novoPago = Number(fatura.paid_amount || 0) + restante;
+
+    const { error: erroFatura } = await supabase
+      .from("invoices")
+      .update({
+        paid_amount: novoPago,
+        status: "paid",
+      })
+      .eq("id", fatura.id);
+
+    if (erroFatura) {
+      alert(erroFatura.message);
+      return;
+    }
+
+    const { data: comprasDaFatura } = await supabase
+      .from("card_purchases")
+      .select("id")
+      .eq("invoice_id", fatura.id);
+
+    if (comprasDaFatura?.length) {
+      const ids = comprasDaFatura.map((compra) => compra.id);
+      await supabase
+        .from("card_installments")
+        .update({ status: "paid" })
+        .in("purchase_id", ids)
+        .eq("due_date", fatura.due_date);
+    }
+
+    const cartao = cartoes.find(
+      (item) => String(item.id) === String(fatura.card_id)
+    );
+
+    if (cartao) {
+      const novoDisponivel = Number(cartao.available_limit || 0) + restante;
+      await supabase
+        .from("cards")
+        .update({ available_limit: Math.min(Number(cartao.credit_limit || 0), novoDisponivel) })
+        .eq("id", cartao.id);
+    }
+
+    await carregarContas();
+    await carregarCartoes();
+    await carregarFaturas();
+    await carregarParcelas();
+
+    alert("Fatura paga com sucesso!");
+  }
+
+  async function pagarParcela(parcela) {
+    if (parcela.status === "paid") return;
+
+    const contaId = contasParcelaSelecionadas[parcela.id];
+    const contaSelecionada = contas.find(
+      (item) => String(item.id ?? item.uuid) === String(contaId)
+    );
+
+    if (!contaSelecionada) {
+      alert("Selecione a conta bancária que será usada para pagar a parcela.");
+      return;
+    }
+
+    const valor = Number(parcela.amount || 0);
+    const confirmar = window.confirm(
+      `Confirmar pagamento da parcela no valor de R$ ${valor.toFixed(2).replace(".", ",")}?`
+    );
+    if (!confirmar) return;
+
+    const novoSaldo = Number(contaSelecionada.balance || 0) - valor;
+    const colunaId = contaSelecionada.id !== undefined ? "id" : "uuid";
+
+    const { error: erroSaldo } = await supabase
+      .from("accounts")
+      .update({ balance: novoSaldo })
+      .eq(colunaId, contaId);
+
+    if (erroSaldo) {
+      alert(erroSaldo.message);
+      return;
+    }
+
+    const { error: erroParcela } = await supabase
+      .from("card_installments")
+      .update({ status: "paid" })
+      .eq("id", parcela.id);
+
+    if (erroParcela) {
+      alert(erroParcela.message);
+      return;
+    }
+
+    const { data: compra } = await supabase
+      .from("card_purchases")
+      .select("card_id")
+      .eq("id", parcela.purchase_id)
+      .maybeSingle();
+
+    if (compra) {
+      const cartao = cartoes.find((item) => String(item.id) === String(compra.card_id));
+      if (cartao) {
+        const novoDisponivel = Number(cartao.available_limit || 0) + valor;
+        await supabase
+          .from("cards")
+          .update({ available_limit: Math.min(Number(cartao.credit_limit || 0), novoDisponivel) })
+          .eq("id", cartao.id);
+      }
+    }
+
+    const { data: fatura } = await supabase
+      .from("invoices")
+      .select("*")
+      .eq("card_id", compra?.card_id)
+      .eq("due_date", parcela.due_date)
+      .maybeSingle();
+
+    if (fatura) {
+      const novoPago = Math.min(
+        Number(fatura.total_amount || 0),
+        Number(fatura.paid_amount || 0) + valor
+      );
+
+      await supabase
+        .from("invoices")
+        .update({
+          paid_amount: novoPago,
+          status: novoPago >= Number(fatura.total_amount || 0) ? "paid" : "open",
+        })
+        .eq("id", fatura.id);
+    }
+
+    await carregarContas();
+    await carregarCartoes();
+    await carregarParcelas();
+    await carregarFaturas();
+    alert("Parcela paga com sucesso!");
+  }
+
   async function criarCartao(e) {
     e.preventDefault();
 
@@ -512,10 +691,10 @@ function Painel({ email, sair }) {
     if (!user) return;
 
     const limite = Number(limiteCartao) || 0;
-    const disponivel =
-      limiteDisponivel === ""
-        ? limite
-        : Number(limiteDisponivel) || 0;
+    const limiteAnterior = Number(cartaoEditando.credit_limit || 0);
+    const disponivelAnterior = Number(cartaoEditando.available_limit ?? limiteAnterior);
+    const utilizado = Math.max(0, limiteAnterior - disponivelAnterior);
+    const disponivel = Math.max(0, limite - utilizado);
 
     const { error } = await supabase
       .from("cards")
@@ -542,6 +721,7 @@ function Painel({ email, sair }) {
     await carregarCartoes();
     alert("Cartão atualizado com sucesso!");
   }
+
 
   function adicionarMes(data, quantidade) {
     const novaData = new Date(data);
@@ -630,98 +810,91 @@ function Painel({ email, sair }) {
   async function criarCompra(e) {
     e.preventDefault();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const cartao = cartoes.find(
-      (item) => String(item.id) === String(cartaoCompra)
-    );
-
+    const cartao = cartoes.find((item) => String(item.id) === String(cartaoCompra));
     if (!cartao) {
       alert("Selecione um cartão.");
       return;
     }
 
     const valor = Number(valorCompra) || 0;
-    const totalParcelas = Math.max(
-      1,
-      Number(totalParcelasCompra) || 1
-    );
+    const totalParcelas = Math.max(1, Number(totalParcelasCompra) || 1);
 
     if (valor <= 0) {
       alert("Informe um valor válido.");
       return;
     }
 
+    const limiteDisponivelAtual = Number(cartao.available_limit ?? cartao.credit_limit ?? 0);
+
+    if (valor > limiteDisponivelAtual) {
+      alert(`Compra não autorizada. O limite disponível é de R$ ${limiteDisponivelAtual.toFixed(2).replace(".", ",")}.`);
+      return;
+    }
+
     const valorParcela = valor / totalParcelas;
+    const primeiraFatura = calcularFatura(cartao, dataCompra);
 
-    const dadosFatura = calcularFatura(
-      cartao,
-      dataCompra
-    );
-
-    let { data: faturaExistente, error: erroBuscaFatura } =
-      await supabase
+    async function obterOuCriarFatura(dados) {
+      let { data: fatura, error } = await supabase
         .from("invoices")
         .select("*")
         .eq("user_id", user.id)
         .eq("card_id", cartao.id)
-        .eq("reference_month", dadosFatura.referenceMonth)
+        .eq("reference_month", dados.referenceMonth)
         .maybeSingle();
 
-    if (erroBuscaFatura) {
-      alert(erroBuscaFatura.message);
+      if (error) throw error;
+
+      if (!fatura) {
+        const { data: novaFatura, error: erroNova } = await supabase
+          .from("invoices")
+          .insert({
+            user_id: user.id,
+            card_id: cartao.id,
+            reference_month: dados.referenceMonth,
+            closing_date: dados.closingDate,
+            due_date: dados.dueDate,
+            total_amount: 0,
+            paid_amount: 0,
+            status: "open",
+          })
+          .select()
+          .single();
+
+        if (erroNova) throw erroNova;
+        fatura = novaFatura;
+      }
+
+      return fatura;
+    }
+
+    let faturaInicial;
+    try {
+      faturaInicial = await obterOuCriarFatura(primeiraFatura);
+    } catch (error) {
+      alert(error.message);
       return;
     }
 
-    let faturaId;
-
-    if (!faturaExistente) {
-      const { data: novaFatura, error } = await supabase
-        .from("invoices")
-        .insert({
-          user_id: user.id,
-          card_id: cartao.id,
-          reference_month: dadosFatura.referenceMonth,
-          closing_date: dadosFatura.closingDate,
-          due_date: dadosFatura.dueDate,
-          total_amount: 0,
-          paid_amount: 0,
-          status: "open",
-        })
-        .select()
-        .single();
-
-      if (error) {
-        alert(error.message);
-        return;
-      }
-
-      faturaExistente = novaFatura;
-    }
-
-    faturaId = faturaExistente.id;
-
-    const { data: compraCriada, error: erroCompra } =
-      await supabase
-        .from("card_purchases")
-        .insert({
-          user_id: user.id,
-          card_id: cartao.id,
-          invoice_id: faturaId,
-          category_id: null,
-          description: descricaoCompra,
-          amount: valor,
-          purchase_date: dataCompra,
-          total_installments: totalParcelas,
-          current_installment: 1,
-          notes: observacaoCompra || null,
-        })
-        .select()
-        .single();
+    const { data: compraCriada, error: erroCompra } = await supabase
+      .from("card_purchases")
+      .insert({
+        user_id: user.id,
+        card_id: cartao.id,
+        invoice_id: faturaInicial.id,
+        category_id: null,
+        description: descricaoCompra,
+        amount: valor,
+        purchase_date: dataCompra,
+        total_installments: totalParcelas,
+        current_installment: 1,
+        notes: observacaoCompra || null,
+      })
+      .select()
+      .single();
 
     if (erroCompra) {
       alert(erroCompra.message);
@@ -729,12 +902,28 @@ function Painel({ email, sair }) {
     }
 
     const listaParcelas = [];
+    const faturasAtualizar = new Map();
 
     for (let i = 1; i <= totalParcelas; i++) {
-      const vencimento = adicionarMes(
-        new Date(`${dadosFatura.dueDate}T00:00:00`),
-        i - 1
-      );
+      const vencimento = adicionarMes(new Date(`${faturaInicial.due_date}T00:00:00`), i - 1);
+      const fechamento = adicionarMes(new Date(`${faturaInicial.closing_date}T00:00:00`), i - 1);
+      const referencia = adicionarMes(new Date(`${faturaInicial.reference_month}T00:00:00`), i - 1);
+
+      const dadosFatura = {
+        referenceMonth: `${referencia.getFullYear()}-${String(referencia.getMonth() + 1).padStart(2, "0")}-01`,
+        closingDate: dataParaString(fechamento),
+        dueDate: dataParaString(vencimento),
+      };
+
+      let fatura;
+      try {
+        fatura = i === 1 ? primeiraFatura : await obterOuCriarFatura(dadosFatura);
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+
+      faturasAtualizar.set(fatura.id, { fatura, valor: Number(fatura.total_amount || 0) + valorParcela });
 
       listaParcelas.push({
         user_id: user.id,
@@ -756,34 +945,24 @@ function Painel({ email, sair }) {
       return;
     }
 
-    const novoTotalFatura =
-      Number(faturaExistente.total_amount || 0) +
-      valorParcela;
-
-    const { error: erroFatura } = await supabase
-      .from("invoices")
-      .update({
-        total_amount: novoTotalFatura,
-      })
-      .eq("id", faturaId);
-
-    if (erroFatura) {
-      alert(erroFatura.message);
-      return;
+    for (const { fatura, valor: novoTotal } of faturasAtualizar.values()) {
+      const { error } = await supabase
+        .from("invoices")
+        .update({ total_amount: novoTotal, status: "open" })
+        .eq("id", fatura.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
     }
 
-    const limiteAtual = Number(
-      cartao.available_limit ?? cartao.credit_limit ?? 0
-    );
-
-    const novoLimite = limiteAtual - valor;
+    const novoLimite = Math.max(0, limiteDisponivelAtual - valor);
 
     const { error: erroLimite } = await supabase
       .from("cards")
-      .update({
-        available_limit: novoLimite,
-      })
-      .eq("id", cartao.id);
+      .update({ available_limit: novoLimite })
+      .eq("id", cartao.id)
+      .eq("user_id", user.id);
 
     if (erroLimite) {
       alert(erroLimite.message);
@@ -793,9 +972,7 @@ function Painel({ email, sair }) {
     setCartaoCompra("");
     setDescricaoCompra("");
     setValorCompra("");
-    setDataCompra(
-      new Date().toISOString().split("T")[0]
-    );
+    setDataCompra(new Date().toISOString().split("T")[0]);
     setTotalParcelasCompra("1");
     setObservacaoCompra("");
 
@@ -1694,6 +1871,60 @@ function Painel({ email, sair }) {
                       }
                     )}
                   </ListaVazia>
+
+                  <div style={{ marginTop: 35 }}>
+                    <span>FATURAS DO CARTÃO</span>
+                    <h2>Faturas a pagar</h2>
+
+                    {faturas.filter((fatura) => fatura.status !== "paid").length === 0 ? (
+                      <p>Nenhuma fatura de cartão pendente.</p>
+                    ) : (
+                      faturas
+                        .filter((fatura) => fatura.status !== "paid")
+                        .map((fatura) => {
+                          const cartao = cartoes.find((item) => String(item.id) === String(fatura.card_id));
+                          const restante = Math.max(0, Number(fatura.total_amount || 0) - Number(fatura.paid_amount || 0));
+
+                          return (
+                            <div key={`fatura-pagar-${fatura.id}`} style={{ ...itemStyle, display: "block" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 15, alignItems: "center" }}>
+                                <div>
+                                  <strong>{cartao?.name || "Cartão"} — Fatura</strong>
+                                  <div style={{ color: "#666", fontSize: 12, marginTop: 6 }}>
+                                    Vencimento: {formatarData(fatura.due_date)}
+                                  </div>
+                                  <div style={{ color: "#777", fontSize: 12, marginTop: 5 }}>
+                                    Restante: R$ {restante.toFixed(2).replace(".", ",")}
+                                  </div>
+                                </div>
+
+                                <div style={{ minWidth: 180 }}>
+                                  <select
+                                    value={contasFaturaSelecionadas[fatura.id] || ""}
+                                    onChange={(e) => setContasFaturaSelecionadas((atual) => ({ ...atual, [fatura.id]: e.target.value }))}
+                                    style={{ ...campo, marginBottom: 8 }}
+                                  >
+                                    <option value="">Conta para pagar</option>
+                                    {contas.map((conta) => (
+                                      <option key={conta.id ?? conta.uuid} value={conta.id ?? conta.uuid}>
+                                        {conta.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => pagarFatura(fatura)}
+                                    style={{ ...botao, marginTop: 0 }}
+                                  >
+                                    Pagar fatura
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
                 </>
               )}
 
@@ -1753,11 +1984,14 @@ function Painel({ email, sair }) {
                       step="0.01"
                       placeholder="Limite de crédito"
                       value={limiteCartao}
-                      onChange={(e) =>
-                        setLimiteCartao(
-                          e.target.value
-                        )
-                      }
+                      onChange={(e) => {
+                        const novoLimite = Number(e.target.value) || 0;
+                        const limiteAnterior = Number(limiteCartao) || 0;
+                        const disponivelAnterior = Number(limiteDisponivel) || 0;
+                        const utilizado = Math.max(0, limiteAnterior - disponivelAnterior);
+                        setLimiteCartao(e.target.value);
+                        setLimiteDisponivel(Math.max(0, novoLimite - utilizado).toFixed(2));
+                      }}
                       required
                       style={campo}
                     />
@@ -1768,12 +2002,8 @@ function Painel({ email, sair }) {
                       step="0.01"
                       placeholder="Limite disponível"
                       value={limiteDisponivel}
-                      onChange={(e) =>
-                        setLimiteDisponivel(
-                          e.target.value
-                        )
-                      }
-                      style={campo}
+                      readOnly
+                      style={{ ...campo, opacity: 0.65 }}
                     />
 
                     <input
@@ -2365,16 +2595,41 @@ function Painel({ email, sair }) {
 
                               <div
                                 style={{
-                                  color:
-                                    "#777",
+                                  color: "#777",
                                   fontSize: 12,
                                   marginTop: 4,
-                                  textAlign:
-                                    "right",
+                                  textAlign: "right",
                                 }}
                               >
-                                {parcela.status ||
-                                  "pending"}
+                                {parcela.status === "paid" ? (
+                                  "Paga"
+                                ) : (
+                                  <>
+                                    <select
+                                      value={contasParcelaSelecionadas[parcela.id] || ""}
+                                      onChange={(e) => setContasParcelaSelecionadas((atual) => ({ ...atual, [parcela.id]: e.target.value }))}
+                                      style={{ ...campo, marginTop: 6, minWidth: 150 }}
+                                    >
+                                      <option value="">Conta para pagar</option>
+                                      {contas.map((conta) => (
+                                        <option key={conta.id ?? conta.uuid} value={conta.id ?? conta.uuid}>
+                                          {conta.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() => pagarParcela(parcela)}
+                                      style={{
+                                        ...botao,
+                                        marginTop: 6,
+                                        padding: "8px 12px",
+                                      }}
+                                    >
+                                      Pagar parcela
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -2910,4 +3165,4 @@ const itemStyle = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: 15,
-}
+};
