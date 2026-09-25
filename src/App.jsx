@@ -40,6 +40,17 @@ function Painel({ email, sair }) {
   const [despesas, setDespesas] = useState([]);
   const [contasPagar, setContasPagar] = useState([]);
 
+  const [cartoes, setCartoes] = useState([]);
+  const [nomeCartao, setNomeCartao] = useState("");
+  const [bancoCartao, setBancoCartao] = useState("");
+  const [ultimosQuatro, setUltimosQuatro] = useState("");
+  const [limiteCartao, setLimiteCartao] = useState("");
+  const [limiteDisponivel, setLimiteDisponivel] = useState("");
+  const [fechamentoCartao, setFechamentoCartao] = useState("");
+  const [vencimentoCartao, setVencimentoCartao] = useState("");
+  const [bandeiraCartao, setBandeiraCartao] = useState("");
+  const [corCartao, setCorCartao] = useState("#ffffff");
+
   const [active, setActive] = useState("Início");
   const [menuAberto, setMenuAberto] = useState(false);
 
@@ -97,6 +108,64 @@ function Painel({ email, sair }) {
     }
 
     setContasPagar(data || []);
+  }
+
+  async function carregarCartoes() {
+    const { data, error } = await supabase
+      .from("cards")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setCartoes(data || []);
+  }
+
+  async function criarCartao(e) {
+    e.preventDefault();
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const limite = Number(limiteCartao) || 0;
+    const disponivel =
+      limiteDisponivel === "" ? limite : Number(limiteDisponivel) || 0;
+
+    const { error } = await supabase.from("cards").insert({
+      user_id: user.id,
+      name: nomeCartao,
+      bank_name: bancoCartao || null,
+      last_four_digits: ultimosQuatro || null,
+      credit_limit: limite,
+      available_limit: disponivel,
+      closing_day: fechamentoCartao ? Number(fechamentoCartao) : null,
+      due_day: vencimentoCartao ? Number(vencimentoCartao) : null,
+      brand: bandeiraCartao || null,
+      color: corCartao || "#ffffff",
+      is_active: true,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setNomeCartao("");
+    setBancoCartao("");
+    setUltimosQuatro("");
+    setLimiteCartao("");
+    setLimiteDisponivel("");
+    setFechamentoCartao("");
+    setVencimentoCartao("");
+    setBandeiraCartao("");
+    setCorCartao("#ffffff");
+
+    await carregarCartoes();
+    alert("Cartão adicionado com sucesso!");
   }
 
   async function criarConta(e) {
@@ -385,6 +454,7 @@ function Painel({ email, sair }) {
     carregarEntradas();
     carregarDespesas();
     carregarContasPagar();
+    carregarCartoes();
   }, []);
 
   function selecionar(item) {
@@ -1323,6 +1393,61 @@ function Painel({ email, sair }) {
                           );
                         }
                       )
+                    )}
+                  </div>
+                </>
+              ) : active === "Cartões" ? (
+                <>
+                  <span>CRÉDITO</span>
+                  <h2>Meus cartões</h2>
+
+                  <form onSubmit={criarCartao} style={{ marginTop: 20 }}>
+                    <input type="text" placeholder="Nome do cartão" value={nomeCartao} onChange={(e) => setNomeCartao(e.target.value)} required style={campo} />
+                    <input type="text" placeholder="Banco" value={bancoCartao} onChange={(e) => setBancoCartao(e.target.value)} style={campo} />
+                    <input type="text" inputMode="numeric" maxLength={4} placeholder="Últimos 4 dígitos" value={ultimosQuatro} onChange={(e) => setUltimosQuatro(e.target.value.replace(/\D/g, "").slice(0, 4))} style={campo} />
+                    <input type="number" min="0" step="0.01" placeholder="Limite de crédito" value={limiteCartao} onChange={(e) => setLimiteCartao(e.target.value)} required style={campo} />
+                    <input type="number" min="0" step="0.01" placeholder="Limite disponível" value={limiteDisponivel} onChange={(e) => setLimiteDisponivel(e.target.value)} style={campo} />
+                    <input type="number" min="1" max="31" placeholder="Dia de fechamento" value={fechamentoCartao} onChange={(e) => setFechamentoCartao(e.target.value)} style={campo} />
+                    <input type="number" min="1" max="31" placeholder="Dia de vencimento" value={vencimentoCartao} onChange={(e) => setVencimentoCartao(e.target.value)} style={campo} />
+                    <input type="text" placeholder="Bandeira (Visa, Mastercard...)" value={bandeiraCartao} onChange={(e) => setBandeiraCartao(e.target.value)} style={campo} />
+
+                    <label style={{ display: "block", marginTop: 12, color: "#777", fontSize: 12 }}>
+                      Cor do cartão
+                      <input type="color" value={corCartao} onChange={(e) => setCorCartao(e.target.value)} style={{ display: "block", width: 60, height: 38, marginTop: 8, background: "#111", border: "1px solid #292929", borderRadius: 8 }} />
+                    </label>
+
+                    <button type="submit" style={botao}>Adicionar cartão</button>
+                  </form>
+
+                  <div style={{ marginTop: 25 }}>
+                    {cartoes.length === 0 ? (
+                      <p>Nenhum cartão cadastrado.</p>
+                    ) : (
+                      cartoes.map((cartao) => (
+                        <div key={cartao.id} style={{ padding: 18, marginTop: 10, background: "#111", border: `1px solid ${cartao.color || "#222"}`, borderRadius: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 15 }}>
+                            <div>
+                              <strong style={{ fontSize: 17 }}>{cartao.name}</strong>
+                              <div style={{ color: "#777", fontSize: 12, marginTop: 6 }}>
+                                {cartao.bank_name || "Banco não informado"}
+                                {cartao.last_four_digits ? ` •••• ${cartao.last_four_digits}` : ""}
+                              </div>
+                            </div>
+                            <span style={{ width: 14, height: 14, borderRadius: "50%", background: cartao.color || "#fff", border: "1px solid #444" }} />
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 16 }}>
+                            <div><small style={{ color: "#666" }}>Limite</small><div>R$ {Number(cartao.credit_limit || 0).toFixed(2).replace(".", ",")}</div></div>
+                            <div><small style={{ color: "#666" }}>Disponível</small><div>R$ {Number(cartao.available_limit ?? 0).toFixed(2).replace(".", ",")}</div></div>
+                            <div><small style={{ color: "#666" }}>Fechamento</small><div>{cartao.closing_day || "-"}º dia</div></div>
+                            <div><small style={{ color: "#666" }}>Vencimento</small><div>{cartao.due_day || "-"}º dia</div></div>
+                          </div>
+
+                          <div style={{ color: "#666", fontSize: 12, marginTop: 12 }}>
+                            {cartao.brand || "Bandeira não informada"} • {cartao.is_active === false ? "Inativo" : "Ativo"}
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
                 </>
