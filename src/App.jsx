@@ -19,6 +19,13 @@ const menu = [
 
 function Painel({ email, sair }) {
   const [contas, setContas] = useState([]);
+  const [entradas, setEntradas] = useState([]);
+  const [despesas, setDespesas] = useState([]);
+  const [contasPagar, setContasPagar] = useState([]);
+  const [cartoes, setCartoes] = useState([]);
+  const [compras, setCompras] = useState([]);
+  const [parcelas, setParcelas] = useState([]);
+  const [faturas, setFaturas] = useState([]);
 
   const [nomeConta, setNomeConta] = useState("");
   const [saldoConta, setSaldoConta] = useState("");
@@ -36,11 +43,6 @@ function Painel({ email, sair }) {
   const [vencimentoContaPagar, setVencimentoContaPagar] = useState("");
   const [contaPagarSelecionada, setContaPagarSelecionada] = useState("");
 
-  const [entradas, setEntradas] = useState([]);
-  const [despesas, setDespesas] = useState([]);
-  const [contasPagar, setContasPagar] = useState([]);
-
-  const [cartoes, setCartoes] = useState([]);
   const [nomeCartao, setNomeCartao] = useState("");
   const [bancoCartao, setBancoCartao] = useState("");
   const [ultimosQuatro, setUltimosQuatro] = useState("");
@@ -50,6 +52,15 @@ function Painel({ email, sair }) {
   const [vencimentoCartao, setVencimentoCartao] = useState("");
   const [bandeiraCartao, setBandeiraCartao] = useState("");
   const [corCartao, setCorCartao] = useState("#ffffff");
+
+  const [cartaoCompra, setCartaoCompra] = useState("");
+  const [descricaoCompra, setDescricaoCompra] = useState("");
+  const [valorCompra, setValorCompra] = useState("");
+  const [dataCompra, setDataCompra] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [totalParcelasCompra, setTotalParcelasCompra] = useState("1");
+  const [observacaoCompra, setObservacaoCompra] = useState("");
 
   const [active, setActive] = useState("Início");
   const [menuAberto, setMenuAberto] = useState(false);
@@ -124,48 +135,46 @@ function Painel({ email, sair }) {
     setCartoes(data || []);
   }
 
-  async function criarCartao(e) {
-    e.preventDefault();
-
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const limite = Number(limiteCartao) || 0;
-    const disponivel =
-      limiteDisponivel === "" ? limite : Number(limiteDisponivel) || 0;
-
-    const { error } = await supabase.from("cards").insert({
-      user_id: user.id,
-      name: nomeCartao,
-      bank_name: bancoCartao || null,
-      last_four_digits: ultimosQuatro || null,
-      credit_limit: limite,
-      available_limit: disponivel,
-      closing_day: fechamentoCartao ? Number(fechamentoCartao) : null,
-      due_day: vencimentoCartao ? Number(vencimentoCartao) : null,
-      brand: bandeiraCartao || null,
-      color: corCartao || "#ffffff",
-      is_active: true,
-    });
+  async function carregarCompras() {
+    const { data, error } = await supabase
+      .from("card_purchases")
+      .select("*")
+      .order("purchase_date", { ascending: false });
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    setNomeCartao("");
-    setBancoCartao("");
-    setUltimosQuatro("");
-    setLimiteCartao("");
-    setLimiteDisponivel("");
-    setFechamentoCartao("");
-    setVencimentoCartao("");
-    setBandeiraCartao("");
-    setCorCartao("#ffffff");
+    setCompras(data || []);
+  }
 
-    await carregarCartoes();
-    alert("Cartão adicionado com sucesso!");
+  async function carregarParcelas() {
+    const { data, error } = await supabase
+      .from("card_installments")
+      .select("*")
+      .order("due_date", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setParcelas(data || []);
+  }
+
+  async function carregarFaturas() {
+    const { data, error } = await supabase
+      .from("invoices")
+      .select("*")
+      .order("due_date", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setFaturas(data || []);
   }
 
   async function criarConta(e) {
@@ -199,27 +208,20 @@ function Painel({ email, sair }) {
   async function criarEntrada(e) {
     e.preventDefault();
 
-    const indice = Number(contaEntrada);
-    const contaSelecionada = contas[indice];
+    const conta = contas[Number(contaEntrada)];
 
-    if (!contaSelecionada) {
+    if (!conta) {
       alert("Selecione uma conta.");
       return;
     }
 
-    const identificador =
-      contaSelecionada.id ?? contaSelecionada.uuid;
-
-    if (!identificador) {
-      alert("Não foi possível identificar esta conta.");
-      return;
-    }
+    const identificador = conta.id ?? conta.uuid;
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return;
+    if (!user || !identificador) return;
 
     const valor = Number(valorEntrada) || 0;
 
@@ -236,11 +238,9 @@ function Painel({ email, sair }) {
       return;
     }
 
-    const novoSaldo =
-      Number(contaSelecionada.balance || 0) + valor;
+    const novoSaldo = Number(conta.balance || 0) + valor;
 
-    const colunaId =
-      contaSelecionada.id !== undefined ? "id" : "uuid";
+    const colunaId = conta.id !== undefined ? "id" : "uuid";
 
     const { error: erroSaldo } = await supabase
       .from("accounts")
@@ -265,27 +265,20 @@ function Painel({ email, sair }) {
   async function criarDespesa(e) {
     e.preventDefault();
 
-    const indice = Number(contaDespesa);
-    const contaSelecionada = contas[indice];
+    const conta = contas[Number(contaDespesa)];
 
-    if (!contaSelecionada) {
+    if (!conta) {
       alert("Selecione uma conta.");
       return;
     }
 
-    const identificador =
-      contaSelecionada.id ?? contaSelecionada.uuid;
-
-    if (!identificador) {
-      alert("Não foi possível identificar esta conta.");
-      return;
-    }
+    const identificador = conta.id ?? conta.uuid;
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return;
+    if (!user || !identificador) return;
 
     const valor = Number(valorDespesa) || 0;
 
@@ -302,11 +295,9 @@ function Painel({ email, sair }) {
       return;
     }
 
-    const novoSaldo =
-      Number(contaSelecionada.balance || 0) - valor;
+    const novoSaldo = Number(conta.balance || 0) - valor;
 
-    const colunaId =
-      contaSelecionada.id !== undefined ? "id" : "uuid";
+    const colunaId = conta.id !== undefined ? "id" : "uuid";
 
     const { error: erroSaldo } = await supabase
       .from("accounts")
@@ -331,32 +322,20 @@ function Painel({ email, sair }) {
   async function criarContaPagar(e) {
     e.preventDefault();
 
-    const indice = Number(contaPagarSelecionada);
-    const contaSelecionada = contas[indice];
+    const conta = contas[Number(contaPagarSelecionada)];
 
-    if (!contaSelecionada) {
+    if (!conta) {
       alert("Selecione a conta.");
       return;
     }
 
-    const identificador =
-      contaSelecionada.id ?? contaSelecionada.uuid;
-
-    if (!identificador) {
-      alert("Não foi possível identificar esta conta.");
-      return;
-    }
-
-    if (!vencimentoContaPagar) {
-      alert("Informe a data de vencimento.");
-      return;
-    }
+    const identificador = conta.id ?? conta.uuid;
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return;
+    if (!user || !identificador) return;
 
     const { error } = await supabase.from("bills").insert({
       user_id: user.id,
@@ -386,16 +365,12 @@ function Painel({ email, sair }) {
   async function pagarConta(conta) {
     if (conta.status === "paid") return;
 
-    const identificador =
-      conta.account_id;
-
     const contaSelecionada = contas.find(
-      (item) =>
-        (item.id ?? item.uuid) === identificador
+      (item) => (item.id ?? item.uuid) === conta.account_id
     );
 
     if (!contaSelecionada) {
-      alert("A conta bancária desta conta a pagar não foi encontrada.");
+      alert("Conta bancária não encontrada.");
       return;
     }
 
@@ -419,22 +394,18 @@ function Painel({ email, sair }) {
     const { error: erroSaldo } = await supabase
       .from("accounts")
       .update({ balance: novoSaldo })
-      .eq(colunaId, identificador);
+      .eq(colunaId, conta.account_id);
 
     if (erroSaldo) {
       alert(erroSaldo.message);
       return;
     }
 
-    const hoje = new Date()
-      .toISOString()
-      .split("T")[0];
-
     const { error } = await supabase
       .from("bills")
       .update({
         status: "paid",
-        paid_date: hoje,
+        paid_date: new Date().toISOString().split("T")[0],
       })
       .eq("id", conta.id);
 
@@ -449,12 +420,333 @@ function Painel({ email, sair }) {
     alert("Conta paga com sucesso!");
   }
 
+  async function criarCartao(e) {
+    e.preventDefault();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const limite = Number(limiteCartao) || 0;
+
+    const disponivel =
+      limiteDisponivel === ""
+        ? limite
+        : Number(limiteDisponivel) || 0;
+
+    const { error } = await supabase.from("cards").insert({
+      user_id: user.id,
+      name: nomeCartao,
+      bank_name: bancoCartao || null,
+      last_four_digits: ultimosQuatro || null,
+      credit_limit: limite,
+      available_limit: disponivel,
+      closing_day: fechamentoCartao
+        ? Number(fechamentoCartao)
+        : null,
+      due_day: vencimentoCartao
+        ? Number(vencimentoCartao)
+        : null,
+      brand: bandeiraCartao || null,
+      color: corCartao || "#ffffff",
+      is_active: true,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setNomeCartao("");
+    setBancoCartao("");
+    setUltimosQuatro("");
+    setLimiteCartao("");
+    setLimiteDisponivel("");
+    setFechamentoCartao("");
+    setVencimentoCartao("");
+    setBandeiraCartao("");
+    setCorCartao("#ffffff");
+
+    await carregarCartoes();
+
+    alert("Cartão adicionado com sucesso!");
+  }
+
+  function adicionarMes(data, quantidade) {
+    const novaData = new Date(data);
+    novaData.setMonth(novaData.getMonth() + quantidade);
+    return novaData;
+  }
+
+  function formatarData(data) {
+    if (!data) return "-";
+
+    return new Date(`${data}T00:00:00`).toLocaleDateString(
+      "pt-BR"
+    );
+  }
+
+  function dataParaString(data) {
+    return data.toISOString().split("T")[0];
+  }
+
+  function calcularFatura(card, data) {
+    const compra = new Date(`${data}T00:00:00`);
+
+    const fechamento = Number(card.closing_day || 31);
+    const vencimento = Number(card.due_day || 10);
+
+    let referencia = new Date(
+      compra.getFullYear(),
+      compra.getMonth(),
+      1
+    );
+
+    if (compra.getDate() > fechamento) {
+      referencia = adicionarMes(referencia, 1);
+    }
+
+    const ultimoDiaFechamento = new Date(
+      referencia.getFullYear(),
+      referencia.getMonth() + 1,
+      0
+    ).getDate();
+
+    const diaFechamento = Math.min(
+      fechamento,
+      ultimoDiaFechamento
+    );
+
+    const dataFechamento = new Date(
+      referencia.getFullYear(),
+      referencia.getMonth(),
+      diaFechamento
+    );
+
+    let anoVencimento = referencia.getFullYear();
+    let mesVencimento = referencia.getMonth();
+
+    if (vencimento <= diaFechamento) {
+      mesVencimento += 1;
+    }
+
+    const ultimoDiaVencimento = new Date(
+      anoVencimento,
+      mesVencimento + 1,
+      0
+    ).getDate();
+
+    const diaVencimento = Math.min(
+      vencimento,
+      ultimoDiaVencimento
+    );
+
+    const dataVencimento = new Date(
+      anoVencimento,
+      mesVencimento,
+      diaVencimento
+    );
+
+    return {
+      referenceMonth: `${referencia.getFullYear()}-${String(
+        referencia.getMonth() + 1
+      ).padStart(2, "0")}-01`,
+      closingDate: dataParaString(dataFechamento),
+      dueDate: dataParaString(dataVencimento),
+    };
+  }
+
+  async function criarCompra(e) {
+    e.preventDefault();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const cartao = cartoes.find(
+      (item) => String(item.id) === String(cartaoCompra)
+    );
+
+    if (!cartao) {
+      alert("Selecione um cartão.");
+      return;
+    }
+
+    const valor = Number(valorCompra) || 0;
+    const totalParcelas = Math.max(
+      1,
+      Number(totalParcelasCompra) || 1
+    );
+
+    if (valor <= 0) {
+      alert("Informe um valor válido.");
+      return;
+    }
+
+    const valorParcela = valor / totalParcelas;
+
+    const dadosFatura = calcularFatura(
+      cartao,
+      dataCompra
+    );
+
+    let { data: faturaExistente, error: erroBuscaFatura } =
+      await supabase
+        .from("invoices")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("card_id", cartao.id)
+        .eq("reference_month", dadosFatura.referenceMonth)
+        .maybeSingle();
+
+    if (erroBuscaFatura) {
+      alert(erroBuscaFatura.message);
+      return;
+    }
+
+    let faturaId;
+
+    if (!faturaExistente) {
+      const { data: novaFatura, error } = await supabase
+        .from("invoices")
+        .insert({
+          user_id: user.id,
+          card_id: cartao.id,
+          reference_month: dadosFatura.referenceMonth,
+          closing_date: dadosFatura.closingDate,
+          due_date: dadosFatura.dueDate,
+          total_amount: 0,
+          paid_amount: 0,
+          status: "open",
+        })
+        .select()
+        .single();
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      faturaExistente = novaFatura;
+    }
+
+    faturaId = faturaExistente.id;
+
+    const { data: compraCriada, error: erroCompra } =
+      await supabase
+        .from("card_purchases")
+        .insert({
+          user_id: user.id,
+          card_id: cartao.id,
+          invoice_id: faturaId,
+          category_id: null,
+          description: descricaoCompra,
+          amount: valor,
+          purchase_date: dataCompra,
+          total_installments: totalParcelas,
+          current_installment: 1,
+          notes: observacaoCompra || null,
+        })
+        .select()
+        .single();
+
+    if (erroCompra) {
+      alert(erroCompra.message);
+      return;
+    }
+
+    const listaParcelas = [];
+
+    for (let i = 1; i <= totalParcelas; i++) {
+      const vencimento = adicionarMes(
+        new Date(`${dadosFatura.dueDate}T00:00:00`),
+        i - 1
+      );
+
+      listaParcelas.push({
+        user_id: user.id,
+        purchase_id: compraCriada.id,
+        installment_number: i,
+        total_installments: totalParcelas,
+        amount: valorParcela,
+        due_date: dataParaString(vencimento),
+        status: "pending",
+      });
+    }
+
+    const { error: erroParcelas } = await supabase
+      .from("card_installments")
+      .insert(listaParcelas);
+
+    if (erroParcelas) {
+      alert(erroParcelas.message);
+      return;
+    }
+
+    const novoTotalFatura =
+      Number(faturaExistente.total_amount || 0) +
+      valorParcela;
+
+    const { error: erroFatura } = await supabase
+      .from("invoices")
+      .update({
+        total_amount: novoTotalFatura,
+      })
+      .eq("id", faturaId);
+
+    if (erroFatura) {
+      alert(erroFatura.message);
+      return;
+    }
+
+    const limiteAtual = Number(
+      cartao.available_limit ?? cartao.credit_limit ?? 0
+    );
+
+    const novoLimite = limiteAtual - valor;
+
+    const { error: erroLimite } = await supabase
+      .from("cards")
+      .update({
+        available_limit: novoLimite,
+      })
+      .eq("id", cartao.id);
+
+    if (erroLimite) {
+      alert(erroLimite.message);
+      return;
+    }
+
+    setCartaoCompra("");
+    setDescricaoCompra("");
+    setValorCompra("");
+    setDataCompra(
+      new Date().toISOString().split("T")[0]
+    );
+    setTotalParcelasCompra("1");
+    setObservacaoCompra("");
+
+    await carregarCartoes();
+    await carregarCompras();
+    await carregarParcelas();
+    await carregarFaturas();
+
+    alert("Compra adicionada com sucesso!");
+  }
+
   useEffect(() => {
     carregarContas();
     carregarEntradas();
     carregarDespesas();
     carregarContasPagar();
     carregarCartoes();
+    carregarCompras();
+    carregarParcelas();
+    carregarFaturas();
   }, []);
 
   function selecionar(item) {
@@ -488,6 +780,19 @@ function Painel({ email, sair }) {
       0
     );
 
+  const totalFaturas = faturas
+    .filter((fatura) => fatura.status !== "paid")
+    .reduce(
+      (total, fatura) =>
+        total +
+        Math.max(
+          0,
+          Number(fatura.total_amount || 0) -
+            Number(fatura.paid_amount || 0)
+        ),
+      0
+    );
+
   const movimentacoes = [
     ...entradas.map((entrada) => ({
       id: `entrada-${entrada.id}`,
@@ -504,17 +809,11 @@ function Painel({ email, sair }) {
       data: despesa.expense_date,
     })),
   ]
-    .sort((a, b) => {
-      const dataA = a.data
-        ? new Date(a.data).getTime()
-        : 0;
-
-      const dataB = b.data
-        ? new Date(b.data).getTime()
-        : 0;
-
-      return dataB - dataA;
-    })
+    .sort(
+      (a, b) =>
+        new Date(b.data || 0) -
+        new Date(a.data || 0)
+    )
     .slice(0, 8);
 
   return (
@@ -554,7 +853,9 @@ function Painel({ email, sair }) {
 
         <button
           className="settings-button"
-          onClick={() => selecionar("Configurações")}
+          onClick={() =>
+            selecionar("Configurações")
+          }
         >
           Configurações
         </button>
@@ -643,13 +944,15 @@ function Painel({ email, sair }) {
 
                   <strong>
                     R${" "}
-                    {totalPagar
+                    {(
+                      totalPagar + totalFaturas
+                    )
                       .toFixed(2)
                       .replace(".", ",")}
                   </strong>
 
                   <small>
-                    Contas pendentes
+                    Contas + faturas
                   </small>
                 </div>
               </div>
@@ -684,66 +987,58 @@ function Painel({ email, sair }) {
                       </p>
                     </div>
                   ) : (
-                    <div>
-                      {movimentacoes.map(
-                        (movimento) => (
-                          <div
-                            key={movimento.id}
-                            style={{
-                              padding: 15,
-                              marginTop: 10,
-                              background: "#111",
-                              border:
-                                "1px solid #222",
-                              borderRadius: 10,
-                              display: "flex",
-                              justifyContent:
-                                "space-between",
-                              alignItems: "center",
-                              gap: 15,
-                            }}
-                          >
-                            <div>
-                              <strong>
-                                {movimento.descricao}
-                              </strong>
-
-                              <div
-                                style={{
-                                  color: "#666",
-                                  fontSize: 12,
-                                  marginTop: 5,
-                                }}
-                              >
-                                {movimento.tipo} •{" "}
-                                {movimento.data
-                                  ? new Date(
-                                      movimento.data +
-                                        "T00:00:00"
-                                    ).toLocaleDateString(
-                                      "pt-BR"
-                                    )
-                                  : ""}
-                              </div>
-                            </div>
-
+                    movimentacoes.map(
+                      (movimento) => (
+                        <div
+                          key={movimento.id}
+                          style={{
+                            padding: 15,
+                            marginTop: 10,
+                            background: "#111",
+                            border:
+                              "1px solid #222",
+                            borderRadius: 10,
+                            display: "flex",
+                            justifyContent:
+                              "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div>
                             <strong>
-                              {movimento.tipo ===
-                              "Entrada"
-                                ? "+"
-                                : "-"}{" "}
-                              R${" "}
-                              {movimento.valor
-                                .toFixed(2)
-                                .replace(
-                                  ".",
-                                  ","
-                                )}
+                              {movimento.descricao}
                             </strong>
+
+                            <div
+                              style={{
+                                color: "#666",
+                                fontSize: 12,
+                                marginTop: 5,
+                              }}
+                            >
+                              {movimento.tipo} •{" "}
+                              {formatarData(
+                                movimento.data
+                              )}
+                            </div>
                           </div>
-                        )
-                      )}
-                    </div>
+
+                          <strong>
+                            {movimento.tipo ===
+                            "Entrada"
+                              ? "+"
+                              : "-"}{" "}
+                            R${" "}
+                            {movimento.valor
+                              .toFixed(2)
+                              .replace(
+                                ".",
+                                ","
+                              )}
+                          </strong>
+                        </div>
+                      )
+                    )
                   )}
                 </section>
 
@@ -796,10 +1091,9 @@ function Painel({ email, sair }) {
             </>
           ) : (
             <section className="panel page">
-              {active === "Contas" ? (
+              {active === "Contas" && (
                 <>
                   <span>FINANÇAS</span>
-
                   <h2>Minhas contas</h2>
 
                   <form
@@ -811,9 +1105,7 @@ function Painel({ email, sair }) {
                       placeholder="Nome da conta"
                       value={nomeConta}
                       onChange={(e) =>
-                        setNomeConta(
-                          e.target.value
-                        )
+                        setNomeConta(e.target.value)
                       }
                       required
                       style={campo}
@@ -824,9 +1116,7 @@ function Painel({ email, sair }) {
                       placeholder="Saldo inicial"
                       value={saldoConta}
                       onChange={(e) =>
-                        setSaldoConta(
-                          e.target.value
-                        )
+                        setSaldoConta(e.target.value)
                       }
                       step="0.01"
                       style={campo}
@@ -840,58 +1130,47 @@ function Painel({ email, sair }) {
                     </button>
                   </form>
 
-                  <div style={{ marginTop: 25 }}>
-                    {contas.length === 0 ? (
-                      <p>
-                        Nenhuma conta cadastrada.
-                      </p>
-                    ) : (
-                      contas.map(
-                        (conta, index) => (
-                          <div
-                            key={
-                              conta.id ??
-                              conta.uuid ??
-                              index
-                            }
-                            style={{
-                              padding: 15,
-                              marginTop: 10,
-                              background: "#111",
-                              border:
-                                "1px solid #222",
-                              borderRadius: 10,
-                              display: "flex",
-                              justifyContent:
-                                "space-between",
-                            }}
-                          >
-                            <strong>
-                              {conta.name}
-                            </strong>
+                  <ListaVazia
+                    vazio={
+                      contas.length === 0
+                    }
+                    texto="Nenhuma conta cadastrada."
+                  >
+                    {contas.map(
+                      (conta, index) => (
+                        <div
+                          key={
+                            conta.id ??
+                            conta.uuid ??
+                            index
+                          }
+                          style={itemStyle}
+                        >
+                          <strong>
+                            {conta.name}
+                          </strong>
 
-                            <span>
-                              R${" "}
-                              {Number(
-                                conta.balance ||
-                                  0
-                              )
-                                .toFixed(2)
-                                .replace(
-                                  ".",
-                                  ","
-                                )}
-                            </span>
-                          </div>
-                        )
+                          <span>
+                            R${" "}
+                            {Number(
+                              conta.balance || 0
+                            )
+                              .toFixed(2)
+                              .replace(
+                                ".",
+                                ","
+                              )}
+                          </span>
+                        </div>
                       )
                     )}
-                  </div>
+                  </ListaVazia>
                 </>
-              ) : active === "Entradas" ? (
+              )}
+
+              {active === "Entradas" && (
                 <>
                   <span>FINANÇAS</span>
-
                   <h2>Entradas</h2>
 
                   <form
@@ -963,74 +1242,58 @@ function Painel({ email, sair }) {
                     </button>
                   </form>
 
-                  <div style={{ marginTop: 25 }}>
-                    {entradas.length === 0 ? (
-                      <p>
-                        Nenhuma entrada cadastrada.
-                      </p>
-                    ) : (
-                      entradas.map(
-                        (entrada) => (
-                          <div
-                            key={entrada.id}
-                            style={{
-                              padding: 15,
-                              marginTop: 10,
-                              background: "#111",
-                              border:
-                                "1px solid #222",
-                              borderRadius: 10,
-                              display: "flex",
-                              justifyContent:
-                                "space-between",
-                            }}
-                          >
-                            <div>
-                              <strong>
-                                {entrada.description}
-                              </strong>
+                  <ListaVazia
+                    vazio={
+                      entradas.length === 0
+                    }
+                    texto="Nenhuma entrada cadastrada."
+                  >
+                    {entradas.map(
+                      (entrada) => (
+                        <div
+                          key={entrada.id}
+                          style={itemStyle}
+                        >
+                          <div>
+                            <strong>
+                              {entrada.description}
+                            </strong>
 
-                              <small
-                                style={{
-                                  display:
-                                    "block",
-                                  color: "#666",
-                                  marginTop: 5,
-                                }}
-                              >
-                                {entrada.income_date
-                                  ? new Date(
-                                      entrada.income_date +
-                                        "T00:00:00"
-                                    ).toLocaleDateString(
-                                      "pt-BR"
-                                    )
-                                  : ""}
-                              </small>
-                            </div>
-
-                            <span>
-                              R${" "}
-                              {Number(
-                                entrada.amount ||
-                                  0
-                              )
-                                .toFixed(2)
-                                .replace(
-                                  ".",
-                                  ","
-                                )}
-                            </span>
+                            <small
+                              style={{
+                                display:
+                                  "block",
+                                color: "#666",
+                                marginTop: 5,
+                              }}
+                            >
+                              {formatarData(
+                                entrada.income_date
+                              )}
+                            </small>
                           </div>
-                        )
+
+                          <span>
+                            R${" "}
+                            {Number(
+                              entrada.amount || 0
+                            )
+                              .toFixed(2)
+                              .replace(
+                                ".",
+                                ","
+                              )}
+                          </span>
+                        </div>
                       )
                     )}
-                  </div>
+                  </ListaVazia>
                 </>
-              ) : active === "Despesas" ? (
+              )}
+
+              {active === "Despesas" && (
                 <>
                   <span>FINANÇAS</span>
-
                   <h2>Despesas</h2>
 
                   <form
@@ -1102,74 +1365,58 @@ function Painel({ email, sair }) {
                     </button>
                   </form>
 
-                  <div style={{ marginTop: 25 }}>
-                    {despesas.length === 0 ? (
-                      <p>
-                        Nenhuma despesa cadastrada.
-                      </p>
-                    ) : (
-                      despesas.map(
-                        (despesa) => (
-                          <div
-                            key={despesa.id}
-                            style={{
-                              padding: 15,
-                              marginTop: 10,
-                              background: "#111",
-                              border:
-                                "1px solid #222",
-                              borderRadius: 10,
-                              display: "flex",
-                              justifyContent:
-                                "space-between",
-                            }}
-                          >
-                            <div>
-                              <strong>
-                                {despesa.description}
-                              </strong>
+                  <ListaVazia
+                    vazio={
+                      despesas.length === 0
+                    }
+                    texto="Nenhuma despesa cadastrada."
+                  >
+                    {despesas.map(
+                      (despesa) => (
+                        <div
+                          key={despesa.id}
+                          style={itemStyle}
+                        >
+                          <div>
+                            <strong>
+                              {despesa.description}
+                            </strong>
 
-                              <small
-                                style={{
-                                  display:
-                                    "block",
-                                  color: "#666",
-                                  marginTop: 5,
-                                }}
-                              >
-                                {despesa.expense_date
-                                  ? new Date(
-                                      despesa.expense_date +
-                                        "T00:00:00"
-                                    ).toLocaleDateString(
-                                      "pt-BR"
-                                    )
-                                  : ""}
-                              </small>
-                            </div>
-
-                            <span>
-                              R${" "}
-                              {Number(
-                                despesa.amount ||
-                                  0
-                              )
-                                .toFixed(2)
-                                .replace(
-                                  ".",
-                                  ","
-                                )}
-                            </span>
+                            <small
+                              style={{
+                                display:
+                                  "block",
+                                color: "#666",
+                                marginTop: 5,
+                              }}
+                            >
+                              {formatarData(
+                                despesa.expense_date
+                              )}
+                            </small>
                           </div>
-                        )
+
+                          <span>
+                            R${" "}
+                            {Number(
+                              despesa.amount || 0
+                            )
+                              .toFixed(2)
+                              .replace(
+                                ".",
+                                ","
+                              )}
+                          </span>
+                        </div>
                       )
                     )}
-                  </div>
+                  </ListaVazia>
                 </>
-              ) : active === "Contas a pagar" ? (
+              )}
+
+              {active === "Contas a pagar" && (
                 <>
                   <span>FINANÇAS</span>
-
                   <h2>Contas a pagar</h2>
 
                   <form
@@ -1234,7 +1481,6 @@ function Painel({ email, sair }) {
                       }
                       required
                       step="0.01"
-                      min="0"
                       style={campo}
                     />
 
@@ -1260,30 +1506,634 @@ function Painel({ email, sair }) {
                     </button>
                   </form>
 
-                  <div style={{ marginTop: 25 }}>
-                    {contasPagar.length === 0 ? (
+                  <ListaVazia
+                    vazio={
+                      contasPagar.length === 0
+                    }
+                    texto="Nenhuma conta a pagar cadastrada."
+                  >
+                    {contasPagar.map(
+                      (conta) => {
+                        const paga =
+                          conta.status ===
+                          "paid";
+
+                        return (
+                          <div
+                            key={conta.id}
+                            style={{
+                              ...itemStyle,
+                              display:
+                                "block",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display:
+                                  "flex",
+                                justifyContent:
+                                  "space-between",
+                                gap: 15,
+                              }}
+                            >
+                              <div>
+                                <strong>
+                                  {
+                                    conta.description
+                                  }
+                                </strong>
+
+                                <div
+                                  style={{
+                                    color:
+                                      "#666",
+                                    fontSize: 12,
+                                    marginTop: 6,
+                                  }}
+                                >
+                                  Vencimento:{" "}
+                                  {formatarData(
+                                    conta.due_date
+                                  )}
+                                </div>
+
+                                <div
+                                  style={{
+                                    color:
+                                      "#888",
+                                    fontSize: 12,
+                                    marginTop: 5,
+                                  }}
+                                >
+                                  Status:{" "}
+                                  {paga
+                                    ? "Paga"
+                                    : "Pendente"}
+                                </div>
+                              </div>
+
+                              <div
+                                style={{
+                                  textAlign:
+                                    "right",
+                                }}
+                              >
+                                <strong>
+                                  R${" "}
+                                  {Number(
+                                    conta.amount ||
+                                      0
+                                  )
+                                    .toFixed(2)
+                                    .replace(
+                                      ".",
+                                      ","
+                                    )}
+                                </strong>
+
+                                {!paga && (
+                                  <button
+                                    onClick={() =>
+                                      pagarConta(
+                                        conta
+                                      )
+                                    }
+                                    style={{
+                                      display:
+                                        "block",
+                                      marginTop: 10,
+                                      padding:
+                                        "9px 12px",
+                                      background:
+                                        "#fff",
+                                      color:
+                                        "#000",
+                                      border: 0,
+                                      borderRadius:
+                                        7,
+                                      fontWeight:
+                                        700,
+                                    }}
+                                  >
+                                    Pagar
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                    )}
+                  </ListaVazia>
+                </>
+              )}
+
+              {active === "Cartões" && (
+                <>
+                  <span>CRÉDITO</span>
+                  <h2>Meus cartões</h2>
+
+                  <form
+                    onSubmit={criarCartao}
+                    style={{ marginTop: 20 }}
+                  >
+                    <input
+                      type="text"
+                      placeholder="Nome do cartão"
+                      value={nomeCartao}
+                      onChange={(e) =>
+                        setNomeCartao(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={campo}
+                    />
+
+                    <input
+                      type="text"
+                      placeholder="Banco"
+                      value={bancoCartao}
+                      onChange={(e) =>
+                        setBancoCartao(
+                          e.target.value
+                        )
+                      }
+                      style={campo}
+                    />
+
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="Últimos 4 dígitos"
+                      value={ultimosQuatro}
+                      onChange={(e) =>
+                        setUltimosQuatro(
+                          e.target.value
+                            .replace(/\D/g, "")
+                            .slice(0, 4)
+                        )
+                      }
+                      style={campo}
+                    />
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Limite de crédito"
+                      value={limiteCartao}
+                      onChange={(e) =>
+                        setLimiteCartao(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={campo}
+                    />
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Limite disponível"
+                      value={limiteDisponivel}
+                      onChange={(e) =>
+                        setLimiteDisponivel(
+                          e.target.value
+                        )
+                      }
+                      style={campo}
+                    />
+
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      placeholder="Dia de fechamento"
+                      value={fechamentoCartao}
+                      onChange={(e) =>
+                        setFechamentoCartao(
+                          e.target.value
+                        )
+                      }
+                      style={campo}
+                    />
+
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      placeholder="Dia de vencimento"
+                      value={vencimentoCartao}
+                      onChange={(e) =>
+                        setVencimentoCartao(
+                          e.target.value
+                        )
+                      }
+                      style={campo}
+                    />
+
+                    <input
+                      type="text"
+                      placeholder="Bandeira"
+                      value={bandeiraCartao}
+                      onChange={(e) =>
+                        setBandeiraCartao(
+                          e.target.value
+                        )
+                      }
+                      style={campo}
+                    />
+
+                    <label
+                      style={{
+                        display: "block",
+                        marginTop: 12,
+                        color: "#777",
+                        fontSize: 12,
+                      }}
+                    >
+                      Cor do cartão
+
+                      <input
+                        type="color"
+                        value={corCartao}
+                        onChange={(e) =>
+                          setCorCartao(
+                            e.target.value
+                          )
+                        }
+                        style={{
+                          display: "block",
+                          width: 60,
+                          height: 38,
+                          marginTop: 8,
+                          background: "#111",
+                          border:
+                            "1px solid #292929",
+                          borderRadius: 8,
+                        }}
+                      />
+                    </label>
+
+                    <button
+                      type="submit"
+                      style={botao}
+                    >
+                      Adicionar cartão
+                    </button>
+                  </form>
+
+                  <div style={{ marginTop: 35 }}>
+                    <h3>Cartões cadastrados</h3>
+
+                    {cartoes.length === 0 ? (
                       <p>
-                        Nenhuma conta a pagar
-                        cadastrada.
+                        Nenhum cartão cadastrado.
                       </p>
                     ) : (
-                      contasPagar.map(
-                        (conta) => {
-                          const paga =
-                            conta.status ===
-                            "paid";
+                      cartoes.map(
+                        (cartao) => (
+                          <div
+                            key={cartao.id}
+                            style={{
+                              padding: 18,
+                              marginTop: 10,
+                              background:
+                                "#111",
+                              border: `1px solid ${
+                                cartao.color ||
+                                "#222"
+                              }`,
+                              borderRadius: 12,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display:
+                                  "flex",
+                                justifyContent:
+                                  "space-between",
+                              }}
+                            >
+                              <div>
+                                <strong>
+                                  {cartao.name}
+                                </strong>
+
+                                <div
+                                  style={{
+                                    color:
+                                      "#777",
+                                    fontSize: 12,
+                                    marginTop: 6,
+                                  }}
+                                >
+                                  {cartao.bank_name ||
+                                    "Banco não informado"}
+
+                                  {cartao.last_four_digits
+                                    ? ` •••• ${cartao.last_four_digits}`
+                                    : ""}
+                                </div>
+                              </div>
+
+                              <span
+                                style={{
+                                  width: 14,
+                                  height: 14,
+                                  borderRadius:
+                                    "50%",
+                                  background:
+                                    cartao.color ||
+                                    "#fff",
+                                }}
+                              />
+                            </div>
+
+                            <div
+                              style={{
+                                display:
+                                  "grid",
+                                gridTemplateColumns:
+                                  "repeat(auto-fit,minmax(150px,1fr))",
+                                gap: 10,
+                                marginTop: 16,
+                              }}
+                            >
+                              <div>
+                                <small>
+                                  Limite
+                                </small>
+
+                                <div>
+                                  R${" "}
+                                  {Number(
+                                    cartao.credit_limit ||
+                                      0
+                                  )
+                                    .toFixed(2)
+                                    .replace(
+                                      ".",
+                                      ","
+                                    )}
+                                </div>
+                              </div>
+
+                              <div>
+                                <small>
+                                  Disponível
+                                </small>
+
+                                <div>
+                                  R${" "}
+                                  {Number(
+                                    cartao.available_limit ??
+                                      0
+                                  )
+                                    .toFixed(2)
+                                    .replace(
+                                      ".",
+                                      ","
+                                    )}
+                                </div>
+                              </div>
+
+                              <div>
+                                <small>
+                                  Fechamento
+                                </small>
+
+                                <div>
+                                  {cartao.closing_day ||
+                                    "-"}
+                                  º dia
+                                </div>
+                              </div>
+
+                              <div>
+                                <small>
+                                  Vencimento
+                                </small>
+
+                                <div>
+                                  {cartao.due_day ||
+                                    "-"}
+                                  º dia
+                                </div>
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                color: "#666",
+                                fontSize: 12,
+                                marginTop: 12,
+                              }}
+                            >
+                              {cartao.brand ||
+                                "Bandeira não informada"}
+                            </div>
+                          </div>
+                        )
+                      )
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 40,
+                      paddingTop: 30,
+                      borderTop:
+                        "1px solid #222",
+                    }}
+                  >
+                    <span>
+                      COMPRAS NO CARTÃO
+                    </span>
+
+                    <h2>
+                      Nova compra
+                    </h2>
+
+                    <form
+                      onSubmit={criarCompra}
+                      style={{
+                        marginTop: 20,
+                      }}
+                    >
+                      <select
+                        value={cartaoCompra}
+                        onChange={(e) =>
+                          setCartaoCompra(
+                            e.target.value
+                          )
+                        }
+                        required
+                        style={campo}
+                      >
+                        <option value="">
+                          Selecione o cartão
+                        </option>
+
+                        {cartoes.map(
+                          (cartao) => (
+                            <option
+                              key={cartao.id}
+                              value={cartao.id}
+                            >
+                              {cartao.name}
+                            </option>
+                          )
+                        )}
+                      </select>
+
+                      <input
+                        type="text"
+                        placeholder="Descrição da compra"
+                        value={descricaoCompra}
+                        onChange={(e) =>
+                          setDescricaoCompra(
+                            e.target.value
+                          )
+                        }
+                        required
+                        style={campo}
+                      />
+
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Valor total"
+                        value={valorCompra}
+                        onChange={(e) =>
+                          setValorCompra(
+                            e.target.value
+                          )
+                        }
+                        required
+                        style={campo}
+                      />
+
+                      <input
+                        type="date"
+                        value={dataCompra}
+                        onChange={(e) =>
+                          setDataCompra(
+                            e.target.value
+                          )
+                        }
+                        required
+                        style={campo}
+                      />
+
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="Quantidade de parcelas"
+                        value={
+                          totalParcelasCompra
+                        }
+                        onChange={(e) =>
+                          setTotalParcelasCompra(
+                            e.target.value
+                          )
+                        }
+                        required
+                        style={campo}
+                      />
+
+                      <input
+                        type="text"
+                        placeholder="Observação (opcional)"
+                        value={observacaoCompra}
+                        onChange={(e) =>
+                          setObservacaoCompra(
+                            e.target.value
+                          )
+                        }
+                        style={campo}
+                      />
+
+                      {Number(
+                        totalParcelasCompra
+                      ) > 1 &&
+                        Number(valorCompra) > 0 && (
+                          <div
+                            style={{
+                              marginTop: 12,
+                              padding: 14,
+                              background:
+                                "#111",
+                              border:
+                                "1px solid #222",
+                              borderRadius: 9,
+                              color: "#aaa",
+                            }}
+                          >
+                            Valor aproximado de cada
+                            parcela:{" "}
+                            <strong>
+                              R${" "}
+                              {(
+                                Number(
+                                  valorCompra
+                                ) /
+                                Number(
+                                  totalParcelasCompra
+                                )
+                              )
+                                .toFixed(2)
+                                .replace(
+                                  ".",
+                                  ","
+                                )}
+                            </strong>
+                          </div>
+                        )}
+
+                      <button
+                        type="submit"
+                        style={botao}
+                      >
+                        Registrar compra
+                      </button>
+                    </form>
+                  </div>
+
+                  <div style={{ marginTop: 35 }}>
+                    <span>HISTÓRICO</span>
+                    <h2>Compras</h2>
+
+                    {compras.length === 0 ? (
+                      <p>
+                        Nenhuma compra cadastrada.
+                      </p>
+                    ) : (
+                      compras.map(
+                        (compra) => {
+                          const cartao =
+                            cartoes.find(
+                              (item) =>
+                                String(
+                                  item.id
+                                ) ===
+                                String(
+                                  compra.card_id
+                                )
+                            );
 
                           return (
                             <div
-                              key={conta.id}
+                              key={compra.id}
                               style={{
-                                padding: 18,
-                                marginTop: 10,
-                                background:
-                                  "#111",
-                                border:
-                                  "1px solid #222",
-                                borderRadius: 10,
+                                ...itemStyle,
+                                display:
+                                  "block",
                               }}
                             >
                               <div
@@ -1292,51 +2142,245 @@ function Painel({ email, sair }) {
                                     "flex",
                                   justifyContent:
                                     "space-between",
-                                  alignItems:
-                                    "center",
                                   gap: 15,
                                 }}
                               >
                                 <div>
                                   <strong>
                                     {
-                                      conta.description
+                                      compra.description
                                     }
                                   </strong>
 
                                   <div
                                     style={{
                                       color:
-                                        "#666",
+                                        "#777",
                                       fontSize: 12,
                                       marginTop: 6,
                                     }}
                                   >
-                                    Vencimento:{" "}
-                                    {conta.due_date
-                                      ? new Date(
-                                          conta.due_date +
-                                            "T00:00:00"
-                                        ).toLocaleDateString(
-                                          "pt-BR"
-                                        )
-                                      : "-"}
+                                    {cartao?.name ||
+                                      "Cartão"}{" "}
+                                    •{" "}
+                                    {formatarData(
+                                      compra.purchase_date
+                                    )}
                                   </div>
 
                                   <div
                                     style={{
                                       color:
-                                        paga
-                                          ? "#777"
-                                          : "#aaa",
+                                        "#666",
                                       fontSize: 12,
-                                      marginTop: 4,
+                                      marginTop: 5,
+                                    }}
+                                  >
+                                    {compra.total_installments ||
+                                      1}{" "}
+                                    parcela(s)
+                                  </div>
+                                </div>
+
+                                <strong>
+                                  R${" "}
+                                  {Number(
+                                    compra.amount ||
+                                      0
+                                  )
+                                    .toFixed(2)
+                                    .replace(
+                                      ".",
+                                      ","
+                                    )}
+                                </strong>
+                              </div>
+                            </div>
+                          );
+                        }
+                      )
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: 35 }}>
+                    <span>PARCELAS</span>
+                    <h2>Parcelas</h2>
+
+                    {parcelas.length === 0 ? (
+                      <p>
+                        Nenhuma parcela cadastrada.
+                      </p>
+                    ) : (
+                      parcelas.map(
+                        (parcela) => (
+                          <div
+                            key={parcela.id}
+                            style={itemStyle}
+                          >
+                            <div>
+                              <strong>
+                                Parcela{" "}
+                                {
+                                  parcela.installment_number
+                                }
+                                /
+                                {
+                                  parcela.total_installments
+                                }
+                              </strong>
+
+                              <div
+                                style={{
+                                  color:
+                                    "#666",
+                                  fontSize: 12,
+                                  marginTop: 5,
+                                }}
+                              >
+                                Vencimento:{" "}
+                                {formatarData(
+                                  parcela.due_date
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <strong>
+                                R${" "}
+                                {Number(
+                                  parcela.amount ||
+                                    0
+                                )
+                                  .toFixed(2)
+                                  .replace(
+                                    ".",
+                                    ","
+                                  )}
+                              </strong>
+
+                              <div
+                                style={{
+                                  color:
+                                    "#777",
+                                  fontSize: 12,
+                                  marginTop: 4,
+                                  textAlign:
+                                    "right",
+                                }}
+                              >
+                                {parcela.status ||
+                                  "pending"}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      )
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: 35 }}>
+                    <span>FATURAS</span>
+                    <h2>Minhas faturas</h2>
+
+                    {faturas.length === 0 ? (
+                      <p>
+                        Nenhuma fatura cadastrada.
+                      </p>
+                    ) : (
+                      faturas.map(
+                        (fatura) => {
+                          const cartao =
+                            cartoes.find(
+                              (item) =>
+                                String(
+                                  item.id
+                                ) ===
+                                String(
+                                  fatura.card_id
+                                )
+                            );
+
+                          const restante =
+                            Math.max(
+                              0,
+                              Number(
+                                fatura.total_amount ||
+                                  0
+                              ) -
+                                Number(
+                                  fatura.paid_amount ||
+                                    0
+                                )
+                            );
+
+                          return (
+                            <div
+                              key={fatura.id}
+                              style={{
+                                ...itemStyle,
+                                display:
+                                  "block",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display:
+                                    "flex",
+                                  justifyContent:
+                                    "space-between",
+                                  gap: 15,
+                                }}
+                              >
+                                <div>
+                                  <strong>
+                                    {cartao?.name ||
+                                      "Cartão"}
+                                  </strong>
+
+                                  <div
+                                    style={{
+                                      color:
+                                        "#777",
+                                      fontSize: 12,
+                                      marginTop: 6,
+                                    }}
+                                  >
+                                    Referência:{" "}
+                                    {formatarData(
+                                      fatura.reference_month
+                                    )}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      color:
+                                        "#666",
+                                      fontSize: 12,
+                                      marginTop: 5,
+                                    }}
+                                  >
+                                    Fechamento:{" "}
+                                    {formatarData(
+                                      fatura.closing_date
+                                    )}
+                                    {" • "}
+                                    Vencimento:{" "}
+                                    {formatarData(
+                                      fatura.due_date
+                                    )}
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      color:
+                                        "#777",
+                                      fontSize: 12,
+                                      marginTop: 5,
                                     }}
                                   >
                                     Status:{" "}
-                                    {paga
-                                      ? "Paga"
-                                      : "Pendente"}
+                                    {fatura.status ||
+                                      "open"}
                                   </div>
                                 </div>
 
@@ -1349,7 +2393,7 @@ function Painel({ email, sair }) {
                                   <strong>
                                     R${" "}
                                     {Number(
-                                      conta.amount ||
+                                      fatura.total_amount ||
                                         0
                                     )
                                       .toFixed(2)
@@ -1359,34 +2403,22 @@ function Painel({ email, sair }) {
                                       )}
                                   </strong>
 
-                                  {!paga && (
-                                    <button
-                                      onClick={() =>
-                                        pagarConta(
-                                          conta
-                                        )
-                                      }
-                                      style={{
-                                        display:
-                                          "block",
-                                        marginTop:
-                                          10,
-                                        padding:
-                                          "9px 12px",
-                                        background:
-                                          "#fff",
-                                        color:
-                                          "#000",
-                                        border: 0,
-                                        borderRadius:
-                                          7,
-                                        fontWeight:
-                                          700,
-                                      }}
-                                    >
-                                      Pagar
-                                    </button>
-                                  )}
+                                  <div
+                                    style={{
+                                      color:
+                                        "#777",
+                                      fontSize: 12,
+                                      marginTop: 5,
+                                    }}
+                                  >
+                                    Restante: R${" "}
+                                    {restante
+                                      .toFixed(2)
+                                      .replace(
+                                        ".",
+                                        ","
+                                      )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -1396,62 +2428,9 @@ function Painel({ email, sair }) {
                     )}
                   </div>
                 </>
-              ) : active === "Cartões" ? (
-                <>
-                  <span>CRÉDITO</span>
-                  <h2>Meus cartões</h2>
+              )}
 
-                  <form onSubmit={criarCartao} style={{ marginTop: 20 }}>
-                    <input type="text" placeholder="Nome do cartão" value={nomeCartao} onChange={(e) => setNomeCartao(e.target.value)} required style={campo} />
-                    <input type="text" placeholder="Banco" value={bancoCartao} onChange={(e) => setBancoCartao(e.target.value)} style={campo} />
-                    <input type="text" inputMode="numeric" maxLength={4} placeholder="Últimos 4 dígitos" value={ultimosQuatro} onChange={(e) => setUltimosQuatro(e.target.value.replace(/\D/g, "").slice(0, 4))} style={campo} />
-                    <input type="number" min="0" step="0.01" placeholder="Limite de crédito" value={limiteCartao} onChange={(e) => setLimiteCartao(e.target.value)} required style={campo} />
-                    <input type="number" min="0" step="0.01" placeholder="Limite disponível" value={limiteDisponivel} onChange={(e) => setLimiteDisponivel(e.target.value)} style={campo} />
-                    <input type="number" min="1" max="31" placeholder="Dia de fechamento" value={fechamentoCartao} onChange={(e) => setFechamentoCartao(e.target.value)} style={campo} />
-                    <input type="number" min="1" max="31" placeholder="Dia de vencimento" value={vencimentoCartao} onChange={(e) => setVencimentoCartao(e.target.value)} style={campo} />
-                    <input type="text" placeholder="Bandeira (Visa, Mastercard...)" value={bandeiraCartao} onChange={(e) => setBandeiraCartao(e.target.value)} style={campo} />
-
-                    <label style={{ display: "block", marginTop: 12, color: "#777", fontSize: 12 }}>
-                      Cor do cartão
-                      <input type="color" value={corCartao} onChange={(e) => setCorCartao(e.target.value)} style={{ display: "block", width: 60, height: 38, marginTop: 8, background: "#111", border: "1px solid #292929", borderRadius: 8 }} />
-                    </label>
-
-                    <button type="submit" style={botao}>Adicionar cartão</button>
-                  </form>
-
-                  <div style={{ marginTop: 25 }}>
-                    {cartoes.length === 0 ? (
-                      <p>Nenhum cartão cadastrado.</p>
-                    ) : (
-                      cartoes.map((cartao) => (
-                        <div key={cartao.id} style={{ padding: 18, marginTop: 10, background: "#111", border: `1px solid ${cartao.color || "#222"}`, borderRadius: 12 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 15 }}>
-                            <div>
-                              <strong style={{ fontSize: 17 }}>{cartao.name}</strong>
-                              <div style={{ color: "#777", fontSize: 12, marginTop: 6 }}>
-                                {cartao.bank_name || "Banco não informado"}
-                                {cartao.last_four_digits ? ` •••• ${cartao.last_four_digits}` : ""}
-                              </div>
-                            </div>
-                            <span style={{ width: 14, height: 14, borderRadius: "50%", background: cartao.color || "#fff", border: "1px solid #444" }} />
-                          </div>
-
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 16 }}>
-                            <div><small style={{ color: "#666" }}>Limite</small><div>R$ {Number(cartao.credit_limit || 0).toFixed(2).replace(".", ",")}</div></div>
-                            <div><small style={{ color: "#666" }}>Disponível</small><div>R$ {Number(cartao.available_limit ?? 0).toFixed(2).replace(".", ",")}</div></div>
-                            <div><small style={{ color: "#666" }}>Fechamento</small><div>{cartao.closing_day || "-"}º dia</div></div>
-                            <div><small style={{ color: "#666" }}>Vencimento</small><div>{cartao.due_day || "-"}º dia</div></div>
-                          </div>
-
-                          <div style={{ color: "#666", fontSize: 12, marginTop: 12 }}>
-                            {cartao.brand || "Bandeira não informada"} • {cartao.is_active === false ? "Inativo" : "Ativo"}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </>
-              ) : active === "Relatórios" ? (
+              {active === "Relatórios" && (
                 <>
                   <span>FECHAMENTO</span>
 
@@ -1463,7 +2442,7 @@ function Painel({ email, sair }) {
                     style={{
                       display: "grid",
                       gridTemplateColumns:
-                        "repeat(auto-fit, minmax(220px, 1fr))",
+                        "repeat(auto-fit,minmax(220px,1fr))",
                       gap: 14,
                       marginTop: 25,
                     }}
@@ -1489,6 +2468,11 @@ function Painel({ email, sair }) {
                     />
 
                     <Resumo
+                      titulo="Faturas"
+                      valor={totalFaturas}
+                    />
+
+                    <Resumo
                       titulo="Resultado"
                       valor={
                         totalEntradas -
@@ -1496,80 +2480,17 @@ function Painel({ email, sair }) {
                       }
                     />
                   </div>
-
-                  <div
-                    style={{
-                      marginTop: 25,
-                      padding: 20,
-                      background: "#111",
-                      border:
-                        "1px solid #222",
-                      borderRadius: 12,
-                    }}
-                  >
-                    <span>RESUMO</span>
-
-                    <p
-                      style={{
-                        marginTop: 12,
-                      }}
-                    >
-                      Entradas: R${" "}
-                      {totalEntradas
-                        .toFixed(2)
-                        .replace(
-                          ".",
-                          ","
-                        )}
-                    </p>
-
-                    <p
-                      style={{
-                        marginTop: 8,
-                      }}
-                    >
-                      Despesas: R${" "}
-                      {totalDespesas
-                        .toFixed(2)
-                        .replace(
-                          ".",
-                          ","
-                        )}
-                    </p>
-
-                    <p
-                      style={{
-                        marginTop: 8,
-                      }}
-                    >
-                      Contas a pagar: R${" "}
-                      {totalPagar
-                        .toFixed(2)
-                        .replace(
-                          ".",
-                          ","
-                        )}
-                    </p>
-
-                    <p
-                      style={{
-                        marginTop: 8,
-                      }}
-                    >
-                      Resultado: R${" "}
-                      {(
-                        totalEntradas -
-                        totalDespesas
-                      )
-                        .toFixed(2)
-                        .replace(
-                          ".",
-                          ","
-                        )}
-                    </p>
-                  </div>
                 </>
-              ) : (
+              )}
+
+              {![
+                "Contas",
+                "Entradas",
+                "Despesas",
+                "Contas a pagar",
+                "Cartões",
+                "Relatórios",
+              ].includes(active) && (
                 <>
                   <span>MÓDULO</span>
 
@@ -1585,7 +2506,7 @@ function Painel({ email, sair }) {
               <button
                 onClick={sair}
                 style={{
-                  marginTop: 20,
+                  marginTop: 25,
                   padding: "10px 15px",
                   background: "#111",
                   color: "#888",
@@ -1609,6 +2530,18 @@ function Painel({ email, sair }) {
           )}
         </section>
       </main>
+    </div>
+  );
+}
+
+function ListaVazia({
+  vazio,
+  texto,
+  children,
+}) {
+  return (
+    <div style={{ marginTop: 25 }}>
+      {vazio ? <p>{texto}</p> : children}
     </div>
   );
 }
@@ -1860,4 +2793,16 @@ const troca = {
   color: "#aaa",
   border: 0,
   cursor: "pointer",
+};
+
+const itemStyle = {
+  padding: 15,
+  marginTop: 10,
+  background: "#111",
+  border: "1px solid #222",
+  borderRadius: 10,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 15,
 };
