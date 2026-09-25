@@ -53,8 +53,11 @@ function Painel({ email, sair }) {
   const [bandeiraCartao, setBandeiraCartao] = useState("");
   const [corCartao, setCorCartao] = useState("#ffffff");
   const [cartaoEditando, setCartaoEditando] = useState(null);
-  const [contasFaturaSelecionadas, setContasFaturaSelecionadas] = useState({});
-  const [contasParcelaSelecionadas, setContasParcelaSelecionadas] = useState({});
+
+  const [contasFaturaSelecionadas, setContasFaturaSelecionadas] =
+    useState({});
+  const [contasParcelaSelecionadas, setContasParcelaSelecionadas] =
+    useState({});
 
   const [cartaoCompra, setCartaoCompra] = useState("");
   const [descricaoCompra, setDescricaoCompra] = useState("");
@@ -124,18 +127,121 @@ function Painel({ email, sair }) {
     setContasPagar(data || []);
   }
 
+  /*
+   * CORREÇÃO PRINCIPAL:
+   *
+   * O limite disponível não depende mais do valor salvo anteriormente
+   * em cards.available_limit.
+   *
+   * Ele é recalculado usando:
+   *
+   * limite do cartão
+   * MENOS
+   * todas as parcelas que ainda estão pendentes.
+   *
+   * Isso faz compras antigas também entrarem no cálculo.
+   */
   async function carregarCartoes() {
-    const { data, error } = await supabase
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { data: cartoesData, error: erroCartoes } = await supabase
       .from("cards")
       .select("*")
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      alert(error.message);
+    if (erroCartoes) {
+      alert(erroCartoes.message);
       return;
     }
 
-    setCartoes(data || []);
+    const { data: comprasData, error: erroCompras } = await supabase
+      .from("card_purchases")
+      .select("id, card_id")
+      .eq("user_id", user.id);
+
+    if (erroCompras) {
+      alert(erroCompras.message);
+      return;
+    }
+
+    const { data: parcelasData, error: erroParcelas } = await supabase
+      .from("card_installments")
+      .select("purchase_id, amount, status")
+      .eq("user_id", user.id)
+      .eq("status", "pending");
+
+    if (erroParcelas) {
+      alert(erroParcelas.message);
+      return;
+    }
+
+    const compraParaCartao = new Map(
+      (comprasData || []).map((compra) => [
+        String(compra.id),
+        String(compra.card_id),
+      ])
+    );
+
+    const utilizadoPorCartao = {};
+
+    for (const parcela of parcelasData || []) {
+      const cardId = compraParaCartao.get(
+        String(parcela.purchase_id)
+      );
+
+      if (!cardId) continue;
+
+      utilizadoPorCartao[cardId] =
+        (utilizadoPorCartao[cardId] || 0) +
+        Number(parcela.amount || 0);
+    }
+
+    const cartoesAtualizados = [];
+
+    for (const cartao of cartoesData || []) {
+      const limite = Number(cartao.credit_limit || 0);
+
+      const utilizado = Number(
+        utilizadoPorCartao[String(cartao.id)] || 0
+      );
+
+      const disponivel = Math.max(
+        0,
+        limite - utilizado
+      );
+
+      if (
+        Math.abs(
+          Number(cartao.available_limit || 0) -
+            disponivel
+        ) > 0.009
+      ) {
+        const { error: erroAtualizacao } = await supabase
+          .from("cards")
+          .update({
+            available_limit: disponivel,
+          })
+          .eq("id", cartao.id)
+          .eq("user_id", user.id);
+
+        if (erroAtualizacao) {
+          alert(erroAtualizacao.message);
+          return;
+        }
+      }
+
+      cartoesAtualizados.push({
+        ...cartao,
+        available_limit: disponivel,
+      });
+    }
+
+    setCartoes(cartoesAtualizados);
   }
 
   async function carregarCompras() {
@@ -205,6 +311,7 @@ function Painel({ email, sair }) {
     setSaldoConta("");
 
     await carregarContas();
+
     alert("Conta adicionada com sucesso!");
   }
 
@@ -427,31 +534,41 @@ function Painel({ email, sair }) {
     if (fatura.status === "paid") return;
 
     const contaId = contasFaturaSelecionadas[fatura.id];
+
     const contaSelecionada = contas.find(
-      (item) => String(item.id ?? item.uuid) === String(contaId)
+      (item) =>
+        String(item.id ?? item.uuid) === String(contaId)
     );
 
     if (!contaSelecionada) {
-      alert("Selecione a conta bancária que será usada para pagar a fatura.");
+      alert(
+        "Selecione a conta bancária que será usada para pagar a fatura."
+      );
       return;
     }
 
     const restante = Math.max(
       0,
-      Number(fatura.total_amount || 0) - Number(fatura.paid_amount || 0)
+      Number(fatura.total_amount || 0) -
+        Number(fatura.paid_amount || 0)
     );
 
     if (restante <= 0) return;
 
     const confirmar = window.confirm(
-      `Confirmar pagamento da fatura no valor de R$ ${restante.toFixed(2).replace(".", ",")}?`
+      `Confirmar pagamento da fatura no valor de R$ ${restante
+        .toFixed(2)
+        .replace(".", ",")}?`
     );
 
     if (!confirmar) return;
 
-    const novoSaldo = Number(contaSelecionada.balance || 0) - restante;
+    const novoSaldo =
+      Number(contaSelecionada.balance || 0) -
+      restante;
 
-    const colunaId = contaSelecionada.id !== undefined ? "id" : "uuid";
+    const colunaId =
+      contaSelecionada.id !== undefined ? "id" : "uuid";
 
     const { error: erroSaldo } = await supabase
       .from("accounts")
@@ -463,7 +580,8 @@ function Painel({ email, sair }) {
       return;
     }
 
-    const novoPago = Number(fatura.paid_amount || 0) + restante;
+    const novoPago =
+      Number(fatura.paid_amount || 0) + restante;
 
     const { error: erroFatura } = await supabase
       .from("invoices")
@@ -484,7 +602,10 @@ function Painel({ email, sair }) {
       .eq("invoice_id", fatura.id);
 
     if (comprasDaFatura?.length) {
-      const ids = comprasDaFatura.map((compra) => compra.id);
+      const ids = comprasDaFatura.map(
+        (compra) => compra.id
+      );
+
       await supabase
         .from("card_installments")
         .update({ status: "paid" })
@@ -492,17 +613,11 @@ function Painel({ email, sair }) {
         .eq("due_date", fatura.due_date);
     }
 
-    const cartao = cartoes.find(
-      (item) => String(item.id) === String(fatura.card_id)
-    );
-
-    if (cartao) {
-      const novoDisponivel = Number(cartao.available_limit || 0) + restante;
-      await supabase
-        .from("cards")
-        .update({ available_limit: Math.min(Number(cartao.credit_limit || 0), novoDisponivel) })
-        .eq("id", cartao.id);
-    }
+    /*
+     * Não alteramos mais o limite manualmente.
+     * carregarCartoes() recalcula o limite real
+     * usando as parcelas pendentes.
+     */
 
     await carregarContas();
     await carregarCartoes();
@@ -515,24 +630,36 @@ function Painel({ email, sair }) {
   async function pagarParcela(parcela) {
     if (parcela.status === "paid") return;
 
-    const contaId = contasParcelaSelecionadas[parcela.id];
+    const contaId =
+      contasParcelaSelecionadas[parcela.id];
+
     const contaSelecionada = contas.find(
-      (item) => String(item.id ?? item.uuid) === String(contaId)
+      (item) =>
+        String(item.id ?? item.uuid) === String(contaId)
     );
 
     if (!contaSelecionada) {
-      alert("Selecione a conta bancária que será usada para pagar a parcela.");
+      alert(
+        "Selecione a conta bancária que será usada para pagar a parcela."
+      );
       return;
     }
 
     const valor = Number(parcela.amount || 0);
+
     const confirmar = window.confirm(
-      `Confirmar pagamento da parcela no valor de R$ ${valor.toFixed(2).replace(".", ",")}?`
+      `Confirmar pagamento da parcela no valor de R$ ${valor
+        .toFixed(2)
+        .replace(".", ",")}?`
     );
+
     if (!confirmar) return;
 
-    const novoSaldo = Number(contaSelecionada.balance || 0) - valor;
-    const colunaId = contaSelecionada.id !== undefined ? "id" : "uuid";
+    const novoSaldo =
+      Number(contaSelecionada.balance || 0) - valor;
+
+    const colunaId =
+      contaSelecionada.id !== undefined ? "id" : "uuid";
 
     const { error: erroSaldo } = await supabase
       .from("accounts")
@@ -560,17 +687,6 @@ function Painel({ email, sair }) {
       .eq("id", parcela.purchase_id)
       .maybeSingle();
 
-    if (compra) {
-      const cartao = cartoes.find((item) => String(item.id) === String(compra.card_id));
-      if (cartao) {
-        const novoDisponivel = Number(cartao.available_limit || 0) + valor;
-        await supabase
-          .from("cards")
-          .update({ available_limit: Math.min(Number(cartao.credit_limit || 0), novoDisponivel) })
-          .eq("id", cartao.id);
-      }
-    }
-
     const { data: fatura } = await supabase
       .from("invoices")
       .select("*")
@@ -588,15 +704,25 @@ function Painel({ email, sair }) {
         .from("invoices")
         .update({
           paid_amount: novoPago,
-          status: novoPago >= Number(fatura.total_amount || 0) ? "paid" : "open",
+          status:
+            novoPago >=
+            Number(fatura.total_amount || 0)
+              ? "paid"
+              : "open",
         })
         .eq("id", fatura.id);
     }
+
+    /*
+     * O limite é recalculado pelas parcelas
+     * que continuam pendentes.
+     */
 
     await carregarContas();
     await carregarCartoes();
     await carregarParcelas();
     await carregarFaturas();
+
     alert("Parcela paga com sucesso!");
   }
 
@@ -611,18 +737,13 @@ function Painel({ email, sair }) {
 
     const limite = Number(limiteCartao) || 0;
 
-    const disponivel =
-      limiteDisponivel === ""
-        ? limite
-        : Number(limiteDisponivel) || 0;
-
     const { error } = await supabase.from("cards").insert({
       user_id: user.id,
       name: nomeCartao,
       bank_name: bancoCartao || null,
       last_four_digits: ultimosQuatro || null,
       credit_limit: limite,
-      available_limit: disponivel,
+      available_limit: limite,
       closing_day: fechamentoCartao
         ? Number(fechamentoCartao)
         : null,
@@ -665,7 +786,11 @@ function Painel({ email, sair }) {
     setVencimentoCartao(cartao.due_day ?? "");
     setBandeiraCartao(cartao.brand || "");
     setCorCartao(cartao.color || "#ffffff");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
   function cancelarEdicaoCartao() {
@@ -686,16 +811,18 @@ function Painel({ email, sair }) {
 
     if (!cartaoEditando) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) return;
 
     const limite = Number(limiteCartao) || 0;
-    const limiteAnterior = Number(cartaoEditando.credit_limit || 0);
-    const disponivelAnterior = Number(cartaoEditando.available_limit ?? limiteAnterior);
-    const utilizado = Math.max(0, limiteAnterior - disponivelAnterior);
-    const disponivel = Math.max(0, limite - utilizado);
 
+    /*
+     * O valor usado é calculado novamente pelas
+     * parcelas pendentes depois da atualização.
+     */
     const { error } = await supabase
       .from("cards")
       .update({
@@ -703,9 +830,13 @@ function Painel({ email, sair }) {
         bank_name: bancoCartao || null,
         last_four_digits: ultimosQuatro || null,
         credit_limit: limite,
-        available_limit: disponivel,
-        closing_day: fechamentoCartao ? Number(fechamentoCartao) : null,
-        due_day: vencimentoCartao ? Number(vencimentoCartao) : null,
+        available_limit: limite,
+        closing_day: fechamentoCartao
+          ? Number(fechamentoCartao)
+          : null,
+        due_day: vencimentoCartao
+          ? Number(vencimentoCartao)
+          : null,
         brand: bandeiraCartao || null,
         color: corCartao || "#ffffff",
       })
@@ -718,23 +849,28 @@ function Painel({ email, sair }) {
     }
 
     cancelarEdicaoCartao();
+
     await carregarCartoes();
+
     alert("Cartão atualizado com sucesso!");
   }
 
-
   function adicionarMes(data, quantidade) {
     const novaData = new Date(data);
-    novaData.setMonth(novaData.getMonth() + quantidade);
+
+    novaData.setMonth(
+      novaData.getMonth() + quantidade
+    );
+
     return novaData;
   }
 
   function formatarData(data) {
     if (!data) return "-";
 
-    return new Date(`${data}T00:00:00`).toLocaleDateString(
-      "pt-BR"
-    );
+    return new Date(
+      `${data}T00:00:00`
+    ).toLocaleDateString("pt-BR");
   }
 
   function dataParaString(data) {
@@ -742,10 +878,15 @@ function Painel({ email, sair }) {
   }
 
   function calcularFatura(card, data) {
-    const compra = new Date(`${data}T00:00:00`);
+    const compra = new Date(
+      `${data}T00:00:00`
+    );
 
-    const fechamento = Number(card.closing_day || 31);
-    const vencimento = Number(card.due_day || 10);
+    const fechamento =
+      Number(card.closing_day || 31);
+
+    const vencimento =
+      Number(card.due_day || 10);
 
     let referencia = new Date(
       compra.getFullYear(),
@@ -754,14 +895,18 @@ function Painel({ email, sair }) {
     );
 
     if (compra.getDate() > fechamento) {
-      referencia = adicionarMes(referencia, 1);
+      referencia = adicionarMes(
+        referencia,
+        1
+      );
     }
 
-    const ultimoDiaFechamento = new Date(
-      referencia.getFullYear(),
-      referencia.getMonth() + 1,
-      0
-    ).getDate();
+    const ultimoDiaFechamento =
+      new Date(
+        referencia.getFullYear(),
+        referencia.getMonth() + 1,
+        0
+      ).getDate();
 
     const diaFechamento = Math.min(
       fechamento,
@@ -774,18 +919,22 @@ function Painel({ email, sair }) {
       diaFechamento
     );
 
-    let anoVencimento = referencia.getFullYear();
-    let mesVencimento = referencia.getMonth();
+    let anoVencimento =
+      referencia.getFullYear();
+
+    let mesVencimento =
+      referencia.getMonth();
 
     if (vencimento <= diaFechamento) {
       mesVencimento += 1;
     }
 
-    const ultimoDiaVencimento = new Date(
-      anoVencimento,
-      mesVencimento + 1,
-      0
-    ).getDate();
+    const ultimoDiaVencimento =
+      new Date(
+        anoVencimento,
+        mesVencimento + 1,
+        0
+      ).getDate();
 
     const diaVencimento = Math.min(
       vencimento,
@@ -802,61 +951,130 @@ function Painel({ email, sair }) {
       referenceMonth: `${referencia.getFullYear()}-${String(
         referencia.getMonth() + 1
       ).padStart(2, "0")}-01`,
-      closingDate: dataParaString(dataFechamento),
-      dueDate: dataParaString(dataVencimento),
+
+      closingDate:
+        dataParaString(dataFechamento),
+
+      dueDate:
+        dataParaString(dataVencimento),
     };
   }
 
   async function criarCompra(e) {
     e.preventDefault();
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     if (!user) return;
 
-    const cartao = cartoes.find((item) => String(item.id) === String(cartaoCompra));
+    /*
+     * Antes de autorizar a compra, recalculamos o limite.
+     * Isso garante que compras antigas sejam consideradas.
+     */
+    await carregarCartoes();
+
+    const { data: cartoesAtualizados } =
+      await supabase
+        .from("cards")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", {
+          ascending: false,
+        });
+
+    if (!cartoesAtualizados) {
+      alert("Não foi possível carregar os cartões.");
+      return;
+    }
+
+    const cartao = cartoesAtualizados.find(
+      (item) =>
+        String(item.id) ===
+        String(cartaoCompra)
+    );
+
     if (!cartao) {
       alert("Selecione um cartão.");
       return;
     }
 
-    const valor = Number(valorCompra) || 0;
-    const totalParcelas = Math.max(1, Number(totalParcelasCompra) || 1);
+    const valor =
+      Number(valorCompra) || 0;
+
+    const totalParcelas = Math.max(
+      1,
+      Number(totalParcelasCompra) || 1
+    );
 
     if (valor <= 0) {
       alert("Informe um valor válido.");
       return;
     }
 
-    const limiteDisponivelAtual = Number(cartao.available_limit ?? cartao.credit_limit ?? 0);
+    const limiteDisponivelAtual =
+      Number(
+        cartao.available_limit ??
+          cartao.credit_limit ??
+          0
+      );
 
-    if (valor > limiteDisponivelAtual) {
-      alert(`Compra não autorizada. O limite disponível é de R$ ${limiteDisponivelAtual.toFixed(2).replace(".", ",")}.`);
+    if (
+      valor >
+      limiteDisponivelAtual
+    ) {
+      alert(
+        `Compra não autorizada. O limite disponível é de R$ ${limiteDisponivelAtual
+          .toFixed(2)
+          .replace(".", ",")}.`
+      );
       return;
     }
 
-    const valorParcela = valor / totalParcelas;
-    const primeiraFatura = calcularFatura(cartao, dataCompra);
+    const valorParcela =
+      valor / totalParcelas;
 
-    async function obterOuCriarFatura(dados) {
-      let { data: fatura, error } = await supabase
+    const primeiraFatura =
+      calcularFatura(
+        cartao,
+        dataCompra
+      );
+
+    async function obterOuCriarFatura(
+      dados
+    ) {
+      let {
+        data: fatura,
+        error,
+      } = await supabase
         .from("invoices")
         .select("*")
         .eq("user_id", user.id)
         .eq("card_id", cartao.id)
-        .eq("reference_month", dados.referenceMonth)
+        .eq(
+          "reference_month",
+          dados.referenceMonth
+        )
         .maybeSingle();
 
       if (error) throw error;
 
       if (!fatura) {
-        const { data: novaFatura, error: erroNova } = await supabase
+        const {
+          data: novaFatura,
+          error: erroNova,
+        } = await supabase
           .from("invoices")
           .insert({
             user_id: user.id,
             card_id: cartao.id,
-            reference_month: dados.referenceMonth,
-            closing_date: dados.closingDate,
-            due_date: dados.dueDate,
+            reference_month:
+              dados.referenceMonth,
+            closing_date:
+              dados.closingDate,
+            due_date:
+              dados.dueDate,
             total_amount: 0,
             paid_amount: 0,
             status: "open",
@@ -865,6 +1083,7 @@ function Painel({ email, sair }) {
           .single();
 
         if (erroNova) throw erroNova;
+
         fatura = novaFatura;
       }
 
@@ -872,14 +1091,21 @@ function Painel({ email, sair }) {
     }
 
     let faturaInicial;
+
     try {
-      faturaInicial = await obterOuCriarFatura(primeiraFatura);
+      faturaInicial =
+        await obterOuCriarFatura(
+          primeiraFatura
+        );
     } catch (error) {
       alert(error.message);
       return;
     }
 
-    const { data: compraCriada, error: erroCompra } = await supabase
+    const {
+      data: compraCriada,
+      error: erroCompra,
+    } = await supabase
       .from("card_purchases")
       .insert({
         user_id: user.id,
@@ -889,9 +1115,11 @@ function Painel({ email, sair }) {
         description: descricaoCompra,
         amount: valor,
         purchase_date: dataCompra,
-        total_installments: totalParcelas,
+        total_installments:
+          totalParcelas,
         current_installment: 1,
-        notes: observacaoCompra || null,
+        notes:
+          observacaoCompra || null,
       })
       .select()
       .single();
@@ -902,41 +1130,99 @@ function Painel({ email, sair }) {
     }
 
     const listaParcelas = [];
-    const faturasAtualizar = new Map();
+    const faturasAtualizar =
+      new Map();
 
-    for (let i = 1; i <= totalParcelas; i++) {
-      const vencimento = adicionarMes(new Date(`${faturaInicial.due_date}T00:00:00`), i - 1);
-      const fechamento = adicionarMes(new Date(`${faturaInicial.closing_date}T00:00:00`), i - 1);
-      const referencia = adicionarMes(new Date(`${faturaInicial.reference_month}T00:00:00`), i - 1);
+    for (
+      let i = 1;
+      i <= totalParcelas;
+      i++
+    ) {
+      const vencimento =
+        adicionarMes(
+          new Date(
+            `${faturaInicial.due_date}T00:00:00`
+          ),
+          i - 1
+        );
+
+      const fechamento =
+        adicionarMes(
+          new Date(
+            `${faturaInicial.closing_date}T00:00:00`
+          ),
+          i - 1
+        );
+
+      const referencia =
+        adicionarMes(
+          new Date(
+            `${faturaInicial.reference_month}T00:00:00`
+          ),
+          i - 1
+        );
 
       const dadosFatura = {
-        referenceMonth: `${referencia.getFullYear()}-${String(referencia.getMonth() + 1).padStart(2, "0")}-01`,
-        closingDate: dataParaString(fechamento),
-        dueDate: dataParaString(vencimento),
+        referenceMonth:
+          `${referencia.getFullYear()}-${String(
+            referencia.getMonth() + 1
+          ).padStart(2, "0")}-01`,
+
+        closingDate:
+          dataParaString(
+            fechamento
+          ),
+
+        dueDate:
+          dataParaString(
+            vencimento
+          ),
       };
 
       let fatura;
+
       try {
-        fatura = i === 1 ? primeiraFatura : await obterOuCriarFatura(dadosFatura);
+        fatura =
+          i === 1
+            ? primeiraFatura
+            : await obterOuCriarFatura(
+                dadosFatura
+              );
       } catch (error) {
         alert(error.message);
         return;
       }
 
-      faturasAtualizar.set(fatura.id, { fatura, valor: Number(fatura.total_amount || 0) + valorParcela });
+      faturasAtualizar.set(
+        fatura.id,
+        {
+          fatura,
+          valor:
+            Number(
+              fatura.total_amount || 0
+            ) + valorParcela,
+        }
+      );
 
       listaParcelas.push({
         user_id: user.id,
-        purchase_id: compraCriada.id,
+        purchase_id:
+          compraCriada.id,
         installment_number: i,
-        total_installments: totalParcelas,
+        total_installments:
+          totalParcelas,
         amount: valorParcela,
-        due_date: dataParaString(vencimento),
+        due_date:
+          dataParaString(
+            vencimento
+          ),
         status: "pending",
       });
     }
 
-    const { error: erroParcelas } = await supabase
+    const {
+      error: erroParcelas,
+    } = await supabase
       .from("card_installments")
       .insert(listaParcelas);
 
@@ -945,34 +1231,44 @@ function Painel({ email, sair }) {
       return;
     }
 
-    for (const { fatura, valor: novoTotal } of faturasAtualizar.values()) {
-      const { error } = await supabase
-        .from("invoices")
-        .update({ total_amount: novoTotal, status: "open" })
-        .eq("id", fatura.id);
+    for (
+      const {
+        fatura,
+        valor: novoTotal,
+      } of faturasAtualizar.values()
+    ) {
+      const { error } =
+        await supabase
+          .from("invoices")
+          .update({
+            total_amount:
+              novoTotal,
+            status: "open",
+          })
+          .eq(
+            "id",
+            fatura.id
+          );
+
       if (error) {
         alert(error.message);
         return;
       }
     }
 
-    const novoLimite = Math.max(0, limiteDisponivelAtual - valor);
-
-    const { error: erroLimite } = await supabase
-      .from("cards")
-      .update({ available_limit: novoLimite })
-      .eq("id", cartao.id)
-      .eq("user_id", user.id);
-
-    if (erroLimite) {
-      alert(erroLimite.message);
-      return;
-    }
+    /*
+     * Não diminuímos o limite manualmente.
+     * O limite será calculado pelas parcelas pendentes.
+     */
 
     setCartaoCompra("");
     setDescricaoCompra("");
     setValorCompra("");
-    setDataCompra(new Date().toISOString().split("T")[0]);
+    setDataCompra(
+      new Date()
+        .toISOString()
+        .split("T")[0]
+    );
     setTotalParcelasCompra("1");
     setObservacaoCompra("");
 
@@ -985,14 +1281,18 @@ function Painel({ email, sair }) {
   }
 
   useEffect(() => {
-    carregarContas();
-    carregarEntradas();
-    carregarDespesas();
-    carregarContasPagar();
-    carregarCartoes();
-    carregarCompras();
-    carregarParcelas();
-    carregarFaturas();
+    async function carregarTudo() {
+      await carregarContas();
+      await carregarEntradas();
+      await carregarDespesas();
+      await carregarContasPagar();
+      await carregarCompras();
+      await carregarParcelas();
+      await carregarFaturas();
+      await carregarCartoes();
+    }
+
+    carregarTudo();
   }, []);
 
   function selecionar(item) {
@@ -1000,65 +1300,113 @@ function Painel({ email, sair }) {
     setMenuAberto(false);
   }
 
-  const totalContas = contas.reduce(
-    (total, conta) =>
-      total + Number(conta.balance || 0),
-    0
-  );
-
-  const totalEntradas = entradas.reduce(
-    (total, entrada) =>
-      total + Number(entrada.amount || 0),
-    0
-  );
-
-  const totalDespesas = despesas.reduce(
-    (total, despesa) =>
-      total + Number(despesa.amount || 0),
-    0
-  );
-
-  const totalPagar = contasPagar
-    .filter((conta) => conta.status !== "paid")
-    .reduce(
+  const totalContas =
+    contas.reduce(
       (total, conta) =>
-        total + Number(conta.amount || 0),
-      0
-    );
-
-  const totalFaturas = faturas
-    .filter((fatura) => fatura.status !== "paid")
-    .reduce(
-      (total, fatura) =>
         total +
-        Math.max(
-          0,
-          Number(fatura.total_amount || 0) -
-            Number(fatura.paid_amount || 0)
+        Number(
+          conta.balance || 0
         ),
       0
     );
 
+  const totalEntradas =
+    entradas.reduce(
+      (total, entrada) =>
+        total +
+        Number(
+          entrada.amount || 0
+        ),
+      0
+    );
+
+  const totalDespesas =
+    despesas.reduce(
+      (total, despesa) =>
+        total +
+        Number(
+          despesa.amount || 0
+        ),
+      0
+    );
+
+  const totalPagar =
+    contasPagar
+      .filter(
+        (conta) =>
+          conta.status !== "paid"
+      )
+      .reduce(
+        (total, conta) =>
+          total +
+          Number(
+            conta.amount || 0
+          ),
+        0
+      );
+
+  const totalFaturas =
+    faturas
+      .filter(
+        (fatura) =>
+          fatura.status !== "paid"
+      )
+      .reduce(
+        (total, fatura) =>
+          total +
+          Math.max(
+            0,
+            Number(
+              fatura.total_amount || 0
+            ) -
+              Number(
+                fatura.paid_amount || 0
+              )
+          ),
+        0
+      );
+
   const movimentacoes = [
-    ...entradas.map((entrada) => ({
-      id: `entrada-${entrada.id}`,
-      tipo: "Entrada",
-      descricao: entrada.description,
-      valor: Number(entrada.amount || 0),
-      data: entrada.income_date,
-    })),
-    ...despesas.map((despesa) => ({
-      id: `despesa-${despesa.id}`,
-      tipo: "Despesa",
-      descricao: despesa.description,
-      valor: Number(despesa.amount || 0),
-      data: despesa.expense_date,
-    })),
+    ...entradas.map(
+      (entrada) => ({
+        id:
+          `entrada-${entrada.id}`,
+        tipo: "Entrada",
+        descricao:
+          entrada.description,
+        valor:
+          Number(
+            entrada.amount || 0
+          ),
+        data:
+          entrada.income_date,
+      })
+    ),
+
+    ...despesas.map(
+      (despesa) => ({
+        id:
+          `despesa-${despesa.id}`,
+        tipo: "Despesa",
+        descricao:
+          despesa.description,
+        valor:
+          Number(
+            despesa.amount || 0
+          ),
+        data:
+          despesa.expense_date,
+      })
+    ),
   ]
     .sort(
       (a, b) =>
-        new Date(b.data || 0) -
-        new Date(a.data || 0)
+        new Date(
+          b.data || 0
+        ) -
+        new Date(
+          a.data || 0
+        )
     )
     .slice(0, 8);
 
@@ -1066,11 +1414,15 @@ function Painel({ email, sair }) {
     <div className="app">
       <aside
         className={`sidebar ${
-          menuAberto ? "mobile-open" : ""
+          menuAberto
+            ? "mobile-open"
+            : ""
         }`}
       >
         <div className="brand">
-          <div className="brand-logo">O</div>
+          <div className="brand-logo">
+            O
+          </div>
 
           <div>
             <div className="brand-name">
@@ -1084,23 +1436,31 @@ function Painel({ email, sair }) {
         </div>
 
         <nav className="nav">
-          {menu.map((item) => (
-            <button
-              key={item}
-              className={`nav-button ${
-                active === item ? "active" : ""
-              }`}
-              onClick={() => selecionar(item)}
-            >
-              {item}
-            </button>
-          ))}
+          {menu.map(
+            (item) => (
+              <button
+                key={item}
+                className={`nav-button ${
+                  active === item
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() =>
+                  selecionar(item)
+                }
+              >
+                {item}
+              </button>
+            )
+          )}
         </nav>
 
         <button
           className="settings-button"
           onClick={() =>
-            selecionar("Configurações")
+            selecionar(
+              "Configurações"
+            )
           }
         >
           Configurações
@@ -1112,7 +1472,9 @@ function Painel({ email, sair }) {
           <button
             className="mobile-menu"
             onClick={() =>
-              setMenuAberto(!menuAberto)
+              setMenuAberto(
+                !menuAberto
+              )
             }
           >
             ☰
@@ -1123,31 +1485,43 @@ function Painel({ email, sair }) {
               OR FINANCE
             </div>
 
-            <h1>{active}</h1>
+            <h1>
+              {active}
+            </h1>
           </div>
 
-          <div className="profile">JC</div>
+          <div className="profile">
+            JC
+          </div>
         </header>
 
         <section className="content">
-          {active === "Início" ? (
+          {active ===
+          "Início" ? (
             <>
               <section className="hero">
                 <div>
-                  <span>Saldo disponível</span>
+                  <span>
+                    Saldo disponível
+                  </span>
 
                   <strong>
                     R${" "}
                     {totalContas
                       .toFixed(2)
-                      .replace(".", ",")}
+                      .replace(
+                        ".",
+                        ","
+                      )}
                   </strong>
                 </div>
 
                 <button
                   className="primary-button"
                   onClick={() =>
-                    selecionar("Entradas")
+                    selecionar(
+                      "Entradas"
+                    )
                   }
                 >
                   + Nova movimentação
@@ -1156,13 +1530,18 @@ function Painel({ email, sair }) {
 
               <div className="stats">
                 <div className="stat-card">
-                  <span>Entradas</span>
+                  <span>
+                    Entradas
+                  </span>
 
                   <strong>
                     R${" "}
                     {totalEntradas
                       .toFixed(2)
-                      .replace(".", ",")}
+                      .replace(
+                        ".",
+                        ","
+                      )}
                   </strong>
 
                   <small>
@@ -1171,13 +1550,18 @@ function Painel({ email, sair }) {
                 </div>
 
                 <div className="stat-card">
-                  <span>Despesas</span>
+                  <span>
+                    Despesas
+                  </span>
 
                   <strong>
                     R${" "}
                     {totalDespesas
                       .toFixed(2)
-                      .replace(".", ",")}
+                      .replace(
+                        ".",
+                        ","
+                      )}
                   </strong>
 
                   <small>
@@ -1186,15 +1570,21 @@ function Painel({ email, sair }) {
                 </div>
 
                 <div className="stat-card">
-                  <span>A pagar</span>
+                  <span>
+                    A pagar
+                  </span>
 
                   <strong>
                     R${" "}
                     {(
-                      totalPagar + totalFaturas
+                      totalPagar +
+                      totalFaturas
                     )
                       .toFixed(2)
-                      .replace(".", ",")}
+                      .replace(
+                        ".",
+                        ","
+                      )}
                   </strong>
 
                   <small>
@@ -1217,7 +1607,8 @@ function Painel({ email, sair }) {
                     </div>
                   </div>
 
-                  {movimentacoes.length === 0 ? (
+                  {movimentacoes.length ===
+                  0 ? (
                     <div className="empty">
                       <div className="empty-icon">
                         —
@@ -1234,35 +1625,48 @@ function Painel({ email, sair }) {
                     </div>
                   ) : (
                     movimentacoes.map(
-                      (movimento) => (
+                      (
+                        movimento
+                      ) => (
                         <div
-                          key={movimento.id}
+                          key={
+                            movimento.id
+                          }
                           style={{
                             padding: 15,
                             marginTop: 10,
-                            background: "#111",
+                            background:
+                              "#111",
                             border:
                               "1px solid #222",
                             borderRadius: 10,
-                            display: "flex",
+                            display:
+                              "flex",
                             justifyContent:
                               "space-between",
-                            alignItems: "center",
+                            alignItems:
+                              "center",
                           }}
                         >
                           <div>
                             <strong>
-                              {movimento.descricao}
+                              {
+                                movimento.descricao
+                              }
                             </strong>
 
                             <div
                               style={{
-                                color: "#666",
+                                color:
+                                  "#666",
                                 fontSize: 12,
                                 marginTop: 5,
                               }}
                             >
-                              {movimento.tipo} •{" "}
+                              {
+                                movimento.tipo
+                              }{" "}
+                              •{" "}
                               {formatarData(
                                 movimento.data
                               )}
@@ -1295,14 +1699,18 @@ function Painel({ email, sair }) {
                         ACESSO RÁPIDO
                       </span>
 
-                      <h2>Adicionar</h2>
+                      <h2>
+                        Adicionar
+                      </h2>
                     </div>
                   </div>
 
                   <div className="quick-actions">
                     <button
                       onClick={() =>
-                        selecionar("Entradas")
+                        selecionar(
+                          "Entradas"
+                        )
                       }
                     >
                       + Entrada
@@ -1310,7 +1718,9 @@ function Painel({ email, sair }) {
 
                     <button
                       onClick={() =>
-                        selecionar("Despesas")
+                        selecionar(
+                          "Despesas"
+                        )
                       }
                     >
                       − Despesa
@@ -1318,7 +1728,9 @@ function Painel({ email, sair }) {
 
                     <button
                       onClick={() =>
-                        selecionar("Contas")
+                        selecionar(
+                          "Contas"
+                        )
                       }
                     >
                       + Conta
@@ -1326,7 +1738,9 @@ function Painel({ email, sair }) {
 
                     <button
                       onClick={() =>
-                        selecionar("Cartões")
+                        selecionar(
+                          "Cartões"
+                        )
                       }
                     >
                       + Cartão
@@ -1337,40 +1751,64 @@ function Painel({ email, sair }) {
             </>
           ) : (
             <section className="panel page">
-              {active === "Contas" && (
+              {active ===
+                "Contas" && (
                 <>
-                  <span>FINANÇAS</span>
-                  <h2>Minhas contas</h2>
+                  <span>
+                    FINANÇAS
+                  </span>
+
+                  <h2>
+                    Minhas contas
+                  </h2>
 
                   <form
-                    onSubmit={criarConta}
-                    style={{ marginTop: 20 }}
+                    onSubmit={
+                      criarConta
+                    }
+                    style={{
+                      marginTop: 20,
+                    }}
                   >
                     <input
                       type="text"
                       placeholder="Nome da conta"
-                      value={nomeConta}
+                      value={
+                        nomeConta
+                      }
                       onChange={(e) =>
-                        setNomeConta(e.target.value)
+                        setNomeConta(
+                          e.target.value
+                        )
                       }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
                       type="number"
                       placeholder="Saldo inicial"
-                      value={saldoConta}
+                      value={
+                        saldoConta
+                      }
                       onChange={(e) =>
-                        setSaldoConta(e.target.value)
+                        setSaldoConta(
+                          e.target.value
+                        )
                       }
                       step="0.01"
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <button
                       type="submit"
-                      style={botao}
+                      style={
+                        botao
+                      }
                     >
                       Adicionar conta
                     </button>
@@ -1378,30 +1816,41 @@ function Painel({ email, sair }) {
 
                   <ListaVazia
                     vazio={
-                      contas.length === 0
+                      contas.length ===
+                      0
                     }
                     texto="Nenhuma conta cadastrada."
                   >
                     {contas.map(
-                      (conta, index) => (
+                      (
+                        conta,
+                        index
+                      ) => (
                         <div
                           key={
                             conta.id ??
                             conta.uuid ??
                             index
                           }
-                          style={itemStyle}
+                          style={
+                            itemStyle
+                          }
                         >
                           <strong>
-                            {conta.name}
+                            {
+                              conta.name
+                            }
                           </strong>
 
                           <span>
                             R${" "}
                             {Number(
-                              conta.balance || 0
+                              conta.balance ||
+                                0
                             )
-                              .toFixed(2)
+                              .toFixed(
+                                2
+                              )
                               .replace(
                                 ".",
                                 ","
@@ -1414,40 +1863,61 @@ function Painel({ email, sair }) {
                 </>
               )}
 
-              {active === "Entradas" && (
+              {active ===
+                "Entradas" && (
                 <>
-                  <span>FINANÇAS</span>
-                  <h2>Entradas</h2>
+                  <span>
+                    FINANÇAS
+                  </span>
+
+                  <h2>
+                    Entradas
+                  </h2>
 
                   <form
-                    onSubmit={criarEntrada}
-                    style={{ marginTop: 20 }}
+                    onSubmit={
+                      criarEntrada
+                    }
+                    style={{
+                      marginTop: 20,
+                    }}
                   >
                     <select
-                      value={contaEntrada}
+                      value={
+                        contaEntrada
+                      }
                       onChange={(e) =>
                         setContaEntrada(
                           e.target.value
                         )
                       }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     >
                       <option value="">
                         Selecione a conta
                       </option>
 
                       {contas.map(
-                        (conta, index) => (
+                        (
+                          conta,
+                          index
+                        ) => (
                           <option
                             key={
                               conta.id ??
                               conta.uuid ??
                               index
                             }
-                            value={index}
+                            value={
+                              index
+                            }
                           >
-                            {conta.name}
+                            {
+                              conta.name
+                            }
                           </option>
                         )
                       )}
@@ -1456,20 +1926,26 @@ function Painel({ email, sair }) {
                     <input
                       type="text"
                       placeholder="Descrição da entrada"
-                      value={descricaoEntrada}
+                      value={
+                        descricaoEntrada
+                      }
                       onChange={(e) =>
                         setDescricaoEntrada(
                           e.target.value
                         )
                       }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
                       type="number"
                       placeholder="Valor"
-                      value={valorEntrada}
+                      value={
+                        valorEntrada
+                      }
                       onChange={(e) =>
                         setValorEntrada(
                           e.target.value
@@ -1477,12 +1953,16 @@ function Painel({ email, sair }) {
                       }
                       required
                       step="0.01"
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <button
                       type="submit"
-                      style={botao}
+                      style={
+                        botao
+                      }
                     >
                       Adicionar entrada
                     </button>
@@ -1490,26 +1970,36 @@ function Painel({ email, sair }) {
 
                   <ListaVazia
                     vazio={
-                      entradas.length === 0
+                      entradas.length ===
+                      0
                     }
                     texto="Nenhuma entrada cadastrada."
                   >
                     {entradas.map(
-                      (entrada) => (
+                      (
+                        entrada
+                      ) => (
                         <div
-                          key={entrada.id}
-                          style={itemStyle}
+                          key={
+                            entrada.id
+                          }
+                          style={
+                            itemStyle
+                          }
                         >
                           <div>
                             <strong>
-                              {entrada.description}
+                              {
+                                entrada.description
+                              }
                             </strong>
 
                             <small
                               style={{
                                 display:
                                   "block",
-                                color: "#666",
+                                color:
+                                  "#666",
                                 marginTop: 5,
                               }}
                             >
@@ -1522,9 +2012,12 @@ function Painel({ email, sair }) {
                           <span>
                             R${" "}
                             {Number(
-                              entrada.amount || 0
+                              entrada.amount ||
+                                0
                             )
-                              .toFixed(2)
+                              .toFixed(
+                                2
+                              )
                               .replace(
                                 ".",
                                 ","
@@ -1537,40 +2030,61 @@ function Painel({ email, sair }) {
                 </>
               )}
 
-              {active === "Despesas" && (
+              {active ===
+                "Despesas" && (
                 <>
-                  <span>FINANÇAS</span>
-                  <h2>Despesas</h2>
+                  <span>
+                    FINANÇAS
+                  </span>
+
+                  <h2>
+                    Despesas
+                  </h2>
 
                   <form
-                    onSubmit={criarDespesa}
-                    style={{ marginTop: 20 }}
+                    onSubmit={
+                      criarDespesa
+                    }
+                    style={{
+                      marginTop: 20,
+                    }}
                   >
                     <select
-                      value={contaDespesa}
+                      value={
+                        contaDespesa
+                      }
                       onChange={(e) =>
                         setContaDespesa(
                           e.target.value
                         )
                       }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     >
                       <option value="">
                         Selecione a conta
                       </option>
 
                       {contas.map(
-                        (conta, index) => (
+                        (
+                          conta,
+                          index
+                        ) => (
                           <option
                             key={
                               conta.id ??
                               conta.uuid ??
                               index
                             }
-                            value={index}
+                            value={
+                              index
+                            }
                           >
-                            {conta.name}
+                            {
+                              conta.name
+                            }
                           </option>
                         )
                       )}
@@ -1579,20 +2093,26 @@ function Painel({ email, sair }) {
                     <input
                       type="text"
                       placeholder="Descrição da despesa"
-                      value={descricaoDespesa}
+                      value={
+                        descricaoDespesa
+                      }
                       onChange={(e) =>
                         setDescricaoDespesa(
                           e.target.value
                         )
                       }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
                       type="number"
                       placeholder="Valor"
-                      value={valorDespesa}
+                      value={
+                        valorDespesa
+                      }
                       onChange={(e) =>
                         setValorDespesa(
                           e.target.value
@@ -1600,12 +2120,16 @@ function Painel({ email, sair }) {
                       }
                       required
                       step="0.01"
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <button
                       type="submit"
-                      style={botao}
+                      style={
+                        botao
+                      }
                     >
                       Adicionar despesa
                     </button>
@@ -1613,26 +2137,36 @@ function Painel({ email, sair }) {
 
                   <ListaVazia
                     vazio={
-                      despesas.length === 0
+                      despesas.length ===
+                      0
                     }
                     texto="Nenhuma despesa cadastrada."
                   >
                     {despesas.map(
-                      (despesa) => (
+                      (
+                        despesa
+                      ) => (
                         <div
-                          key={despesa.id}
-                          style={itemStyle}
+                          key={
+                            despesa.id
+                          }
+                          style={
+                            itemStyle
+                          }
                         >
                           <div>
                             <strong>
-                              {despesa.description}
+                              {
+                                despesa.description
+                              }
                             </strong>
 
                             <small
                               style={{
                                 display:
                                   "block",
-                                color: "#666",
+                                color:
+                                  "#666",
                                 marginTop: 5,
                               }}
                             >
@@ -1645,9 +2179,12 @@ function Painel({ email, sair }) {
                           <span>
                             R${" "}
                             {Number(
-                              despesa.amount || 0
+                              despesa.amount ||
+                                0
                             )
-                              .toFixed(2)
+                              .toFixed(
+                                2
+                              )
                               .replace(
                                 ".",
                                 ","
@@ -1660,14 +2197,24 @@ function Painel({ email, sair }) {
                 </>
               )}
 
-              {active === "Contas a pagar" && (
+              {active ===
+                "Contas a pagar" && (
                 <>
-                  <span>FINANÇAS</span>
-                  <h2>Contas a pagar</h2>
+                  <span>
+                    FINANÇAS
+                  </span>
+
+                  <h2>
+                    Contas a pagar
+                  </h2>
 
                   <form
-                    onSubmit={criarContaPagar}
-                    style={{ marginTop: 20 }}
+                    onSubmit={
+                      criarContaPagar
+                    }
+                    style={{
+                      marginTop: 20,
+                    }}
                   >
                     <select
                       value={
@@ -1679,23 +2226,32 @@ function Painel({ email, sair }) {
                         )
                       }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     >
                       <option value="">
                         Selecione a conta
                       </option>
 
                       {contas.map(
-                        (conta, index) => (
+                        (
+                          conta,
+                          index
+                        ) => (
                           <option
                             key={
                               conta.id ??
                               conta.uuid ??
                               index
                             }
-                            value={index}
+                            value={
+                              index
+                            }
                           >
-                            {conta.name}
+                            {
+                              conta.name
+                            }
                           </option>
                         )
                       )}
@@ -1713,13 +2269,17 @@ function Painel({ email, sair }) {
                         )
                       }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
                       type="number"
                       placeholder="Valor"
-                      value={valorContaPagar}
+                      value={
+                        valorContaPagar
+                      }
                       onChange={(e) =>
                         setValorContaPagar(
                           e.target.value
@@ -1727,7 +2287,9 @@ function Painel({ email, sair }) {
                       }
                       required
                       step="0.01"
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
@@ -1741,12 +2303,16 @@ function Painel({ email, sair }) {
                         )
                       }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <button
                       type="submit"
-                      style={botao}
+                      style={
+                        botao
+                      }
                     >
                       Adicionar conta a pagar
                     </button>
@@ -1754,19 +2320,24 @@ function Painel({ email, sair }) {
 
                   <ListaVazia
                     vazio={
-                      contasPagar.length === 0
+                      contasPagar.length ===
+                      0
                     }
                     texto="Nenhuma conta a pagar cadastrada."
                   >
                     {contasPagar.map(
-                      (conta) => {
+                      (
+                        conta
+                      ) => {
                         const paga =
                           conta.status ===
                           "paid";
 
                         return (
                           <div
-                            key={conta.id}
+                            key={
+                              conta.id
+                            }
                             style={{
                               ...itemStyle,
                               display:
@@ -1830,7 +2401,9 @@ function Painel({ email, sair }) {
                                     conta.amount ||
                                       0
                                   )
-                                    .toFixed(2)
+                                    .toFixed(
+                                      2
+                                    )
                                     .replace(
                                       ".",
                                       ","
@@ -1847,7 +2420,8 @@ function Painel({ email, sair }) {
                                     style={{
                                       display:
                                         "block",
-                                      marginTop: 10,
+                                      marginTop:
+                                        10,
                                       padding:
                                         "9px 12px",
                                       background:
@@ -1872,94 +2446,267 @@ function Painel({ email, sair }) {
                     )}
                   </ListaVazia>
 
-                  <div style={{ marginTop: 35 }}>
-                    <span>FATURAS DO CARTÃO</span>
-                    <h2>Faturas a pagar</h2>
+                  <div
+                    style={{
+                      marginTop: 35,
+                    }}
+                  >
+                    <span>
+                      FATURAS DO CARTÃO
+                    </span>
 
-                    {faturas.filter((fatura) => fatura.status !== "paid").length === 0 ? (
-                      <p>Nenhuma fatura de cartão pendente.</p>
+                    <h2>
+                      Faturas a pagar
+                    </h2>
+
+                    {faturas.filter(
+                      (fatura) =>
+                        fatura.status !==
+                        "paid"
+                    ).length === 0 ? (
+                      <p>
+                        Nenhuma fatura de cartão
+                        pendente.
+                      </p>
                     ) : (
                       faturas
-                        .filter((fatura) => fatura.status !== "paid")
-                        .map((fatura) => {
-                          const cartao = cartoes.find((item) => String(item.id) === String(fatura.card_id));
-                          const restante = Math.max(0, Number(fatura.total_amount || 0) - Number(fatura.paid_amount || 0));
+                        .filter(
+                          (fatura) =>
+                            fatura.status !==
+                            "paid"
+                        )
+                        .map(
+                          (
+                            fatura
+                          ) => {
+                            const cartao =
+                              cartoes.find(
+                                (
+                                  item
+                                ) =>
+                                  String(
+                                    item.id
+                                  ) ===
+                                  String(
+                                    fatura.card_id
+                                  )
+                              );
 
-                          return (
-                            <div key={`fatura-pagar-${fatura.id}`} style={{ ...itemStyle, display: "block" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", gap: 15, alignItems: "center" }}>
-                                <div>
-                                  <strong>{cartao?.name || "Cartão"} — Fatura</strong>
-                                  <div style={{ color: "#666", fontSize: 12, marginTop: 6 }}>
-                                    Vencimento: {formatarData(fatura.due_date)}
-                                  </div>
-                                  <div style={{ color: "#777", fontSize: 12, marginTop: 5 }}>
-                                    Restante: R$ {restante.toFixed(2).replace(".", ",")}
-                                  </div>
-                                </div>
+                            const restante =
+                              Math.max(
+                                0,
+                                Number(
+                                  fatura.total_amount ||
+                                    0
+                                ) -
+                                  Number(
+                                    fatura.paid_amount ||
+                                      0
+                                  )
+                              );
 
-                                <div style={{ minWidth: 180 }}>
-                                  <select
-                                    value={contasFaturaSelecionadas[fatura.id] || ""}
-                                    onChange={(e) => setContasFaturaSelecionadas((atual) => ({ ...atual, [fatura.id]: e.target.value }))}
-                                    style={{ ...campo, marginBottom: 8 }}
+                            return (
+                              <div
+                                key={`fatura-pagar-${fatura.id}`}
+                                style={{
+                                  ...itemStyle,
+                                  display:
+                                    "block",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display:
+                                      "flex",
+                                    justifyContent:
+                                      "space-between",
+                                    gap: 15,
+                                    alignItems:
+                                      "center",
+                                  }}
+                                >
+                                  <div>
+                                    <strong>
+                                      {
+                                        cartao?.name ||
+                                        "Cartão"
+                                      }{" "}
+                                      — Fatura
+                                    </strong>
+
+                                    <div
+                                      style={{
+                                        color:
+                                          "#666",
+                                        fontSize: 12,
+                                        marginTop: 6,
+                                      }}
+                                    >
+                                      Vencimento:{" "}
+                                      {formatarData(
+                                        fatura.due_date
+                                      )}
+                                    </div>
+
+                                    <div
+                                      style={{
+                                        color:
+                                          "#777",
+                                        fontSize: 12,
+                                        marginTop: 5,
+                                      }}
+                                    >
+                                      Restante:
+                                      {" "}
+                                      R${" "}
+                                      {restante
+                                        .toFixed(
+                                          2
+                                        )
+                                        .replace(
+                                          ".",
+                                          ","
+                                        )}
+                                    </div>
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      minWidth:
+                                        180,
+                                    }}
                                   >
-                                    <option value="">Conta para pagar</option>
-                                    {contas.map((conta) => (
-                                      <option key={conta.id ?? conta.uuid} value={conta.id ?? conta.uuid}>
-                                        {conta.name}
+                                    <select
+                                      value={
+                                        contasFaturaSelecionadas[
+                                          fatura.id
+                                        ] ||
+                                        ""
+                                      }
+                                      onChange={(
+                                        e
+                                      ) =>
+                                        setContasFaturaSelecionadas(
+                                          (
+                                            atual
+                                          ) => ({
+                                            ...atual,
+                                            [fatura.id]:
+                                              e.target
+                                                .value,
+                                          })
+                                        )
+                                      }
+                                      style={{
+                                        ...campo,
+                                        marginBottom:
+                                          8,
+                                      }}
+                                    >
+                                      <option value="">
+                                        Conta para pagar
                                       </option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    type="button"
-                                    onClick={() => pagarFatura(fatura)}
-                                    style={{ ...botao, marginTop: 0 }}
-                                  >
-                                    Pagar fatura
-                                  </button>
+
+                                      {contas.map(
+                                        (
+                                          conta
+                                        ) => (
+                                          <option
+                                            key={
+                                              conta.id ??
+                                              conta.uuid
+                                            }
+                                            value={
+                                              conta.id ??
+                                              conta.uuid
+                                            }
+                                          >
+                                            {
+                                              conta.name
+                                            }
+                                          </option>
+                                        )
+                                      )}
+                                    </select>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        pagarFatura(
+                                          fatura
+                                        )
+                                      }
+                                      style={{
+                                        ...botao,
+                                        marginTop:
+                                          0,
+                                      }}
+                                    >
+                                      Pagar fatura
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })
+                            );
+                          }
+                        )
                     )}
                   </div>
                 </>
               )}
 
-              {active === "Cartões" && (
+              {active ===
+                "Cartões" && (
                 <>
-                  <span>CRÉDITO</span>
-                  <h2>Meus cartões</h2>
+                  <span>
+                    CRÉDITO
+                  </span>
+
+                  <h2>
+                    Meus cartões
+                  </h2>
 
                   <form
-                    onSubmit={cartaoEditando ? salvarEdicaoCartao : criarCartao}
-                    style={{ marginTop: 20 }}
+                    onSubmit={
+                      cartaoEditando
+                        ? salvarEdicaoCartao
+                        : criarCartao
+                    }
+                    style={{
+                      marginTop: 20,
+                    }}
                   >
                     <input
                       type="text"
                       placeholder="Nome do cartão"
-                      value={nomeCartao}
+                      value={
+                        nomeCartao
+                      }
                       onChange={(e) =>
                         setNomeCartao(
                           e.target.value
                         )
                       }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
                       type="text"
                       placeholder="Banco"
-                      value={bancoCartao}
+                      value={
+                        bancoCartao
+                      }
                       onChange={(e) =>
                         setBancoCartao(
                           e.target.value
                         )
                       }
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
@@ -1967,15 +2714,25 @@ function Painel({ email, sair }) {
                       inputMode="numeric"
                       maxLength={4}
                       placeholder="Últimos 4 dígitos"
-                      value={ultimosQuatro}
+                      value={
+                        ultimosQuatro
+                      }
                       onChange={(e) =>
                         setUltimosQuatro(
                           e.target.value
-                            .replace(/\D/g, "")
-                            .slice(0, 4)
+                            .replace(
+                              /\D/g,
+                              ""
+                            )
+                            .slice(
+                              0,
+                              4
+                            )
                         )
                       }
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
@@ -1983,17 +2740,18 @@ function Painel({ email, sair }) {
                       min="0"
                       step="0.01"
                       placeholder="Limite de crédito"
-                      value={limiteCartao}
-                      onChange={(e) => {
-                        const novoLimite = Number(e.target.value) || 0;
-                        const limiteAnterior = Number(limiteCartao) || 0;
-                        const disponivelAnterior = Number(limiteDisponivel) || 0;
-                        const utilizado = Math.max(0, limiteAnterior - disponivelAnterior);
-                        setLimiteCartao(e.target.value);
-                        setLimiteDisponivel(Math.max(0, novoLimite - utilizado).toFixed(2));
-                      }}
+                      value={
+                        limiteCartao
+                      }
+                      onChange={(e) =>
+                        setLimiteCartao(
+                          e.target.value
+                        )
+                      }
                       required
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
@@ -2001,9 +2759,15 @@ function Painel({ email, sair }) {
                       min="0"
                       step="0.01"
                       placeholder="Limite disponível"
-                      value={limiteDisponivel}
+                      value={
+                        limiteDisponivel
+                      }
                       readOnly
-                      style={{ ...campo, opacity: 0.65 }}
+                      style={{
+                        ...campo,
+                        opacity:
+                          0.65,
+                      }}
                     />
 
                     <input
@@ -2011,13 +2775,17 @@ function Painel({ email, sair }) {
                       min="1"
                       max="31"
                       placeholder="Dia de fechamento"
-                      value={fechamentoCartao}
+                      value={
+                        fechamentoCartao
+                      }
                       onChange={(e) =>
                         setFechamentoCartao(
                           e.target.value
                         )
                       }
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
@@ -2025,74 +2793,100 @@ function Painel({ email, sair }) {
                       min="1"
                       max="31"
                       placeholder="Dia de vencimento"
-                      value={vencimentoCartao}
+                      value={
+                        vencimentoCartao
+                      }
                       onChange={(e) =>
                         setVencimentoCartao(
                           e.target.value
                         )
                       }
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <input
                       type="text"
                       placeholder="Bandeira"
-                      value={bandeiraCartao}
+                      value={
+                        bandeiraCartao
+                      }
                       onChange={(e) =>
                         setBandeiraCartao(
                           e.target.value
                         )
                       }
-                      style={campo}
+                      style={
+                        campo
+                      }
                     />
 
                     <label
                       style={{
-                        display: "block",
-                        marginTop: 12,
-                        color: "#777",
-                        fontSize: 12,
+                        display:
+                          "block",
+                        marginTop:
+                          12,
+                        color:
+                          "#777",
+                        fontSize:
+                          12,
                       }}
                     >
                       Cor do cartão
 
                       <input
                         type="color"
-                        value={corCartao}
+                        value={
+                          corCartao
+                        }
                         onChange={(e) =>
                           setCorCartao(
                             e.target.value
                           )
                         }
                         style={{
-                          display: "block",
+                          display:
+                            "block",
                           width: 60,
                           height: 38,
                           marginTop: 8,
-                          background: "#111",
+                          background:
+                            "#111",
                           border:
                             "1px solid #292929",
-                          borderRadius: 8,
+                          borderRadius:
+                            8,
                         }}
                       />
                     </label>
 
                     <button
                       type="submit"
-                      style={botao}
+                      style={
+                        botao
+                      }
                     >
-                      {cartaoEditando ? "Salvar alterações" : "Adicionar cartão"}
+                      {cartaoEditando
+                        ? "Salvar alterações"
+                        : "Adicionar cartão"}
                     </button>
 
                     {cartaoEditando && (
                       <button
                         type="button"
-                        onClick={cancelarEdicaoCartao}
+                        onClick={
+                          cancelarEdicaoCartao
+                        }
                         style={{
                           ...troca,
-                          marginTop: 6,
-                          border: "1px solid #292929",
-                          borderRadius: 9,
+                          marginTop:
+                            6,
+                          border:
+                            "1px solid #292929",
+                          borderRadius:
+                            9,
                         }}
                       >
                         Cancelar edição
@@ -2100,28 +2894,43 @@ function Painel({ email, sair }) {
                     )}
                   </form>
 
-                  <div style={{ marginTop: 35 }}>
-                    <h3>Cartões cadastrados</h3>
+                  <div
+                    style={{
+                      marginTop: 35,
+                    }}
+                  >
+                    <h3>
+                      Cartões cadastrados
+                    </h3>
 
-                    {cartoes.length === 0 ? (
+                    {cartoes.length ===
+                    0 ? (
                       <p>
-                        Nenhum cartão cadastrado.
+                        Nenhum cartão
+                        cadastrado.
                       </p>
                     ) : (
                       cartoes.map(
-                        (cartao) => (
+                        (
+                          cartao
+                        ) => (
                           <div
-                            key={cartao.id}
+                            key={
+                              cartao.id
+                            }
                             style={{
-                              padding: 18,
-                              marginTop: 10,
+                              padding:
+                                18,
+                              marginTop:
+                                10,
                               background:
                                 "#111",
                               border: `1px solid ${
                                 cartao.color ||
                                 "#222"
                               }`,
-                              borderRadius: 12,
+                              borderRadius:
+                                12,
                             }}
                           >
                             <div
@@ -2134,15 +2943,19 @@ function Painel({ email, sair }) {
                             >
                               <div>
                                 <strong>
-                                  {cartao.name}
+                                  {
+                                    cartao.name
+                                  }
                                 </strong>
 
                                 <div
                                   style={{
                                     color:
                                       "#777",
-                                    fontSize: 12,
-                                    marginTop: 6,
+                                    fontSize:
+                                      12,
+                                    marginTop:
+                                      6,
                                   }}
                                 >
                                   {cartao.bank_name ||
@@ -2156,31 +2969,48 @@ function Painel({ email, sair }) {
 
                               <div
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
+                                  display:
+                                    "flex",
+                                  alignItems:
+                                    "center",
                                   gap: 10,
                                 }}
                               >
                                 <span
                                   style={{
-                                    width: 14,
-                                    height: 14,
-                                    borderRadius: "50%",
-                                    background: cartao.color || "#fff",
+                                    width:
+                                      14,
+                                    height:
+                                      14,
+                                    borderRadius:
+                                      "50%",
+                                    background:
+                                      cartao.color ||
+                                      "#fff",
                                   }}
                                 />
 
                                 <button
                                   type="button"
-                                  onClick={() => iniciarEdicaoCartao(cartao)}
+                                  onClick={() =>
+                                    iniciarEdicaoCartao(
+                                      cartao
+                                    )
+                                  }
                                   style={{
-                                    padding: "8px 12px",
-                                    background: "#fff",
-                                    color: "#000",
+                                    padding:
+                                      "8px 12px",
+                                    background:
+                                      "#fff",
+                                    color:
+                                      "#000",
                                     border: 0,
-                                    borderRadius: 7,
-                                    fontWeight: 700,
-                                    cursor: "pointer",
+                                    borderRadius:
+                                      7,
+                                    fontWeight:
+                                      700,
+                                    cursor:
+                                      "pointer",
                                   }}
                                 >
                                   Editar
@@ -2195,7 +3025,8 @@ function Painel({ email, sair }) {
                                 gridTemplateColumns:
                                   "repeat(auto-fit,minmax(150px,1fr))",
                                 gap: 10,
-                                marginTop: 16,
+                                marginTop:
+                                  16,
                               }}
                             >
                               <div>
@@ -2209,7 +3040,9 @@ function Painel({ email, sair }) {
                                     cartao.credit_limit ||
                                       0
                                   )
-                                    .toFixed(2)
+                                    .toFixed(
+                                      2
+                                    )
                                     .replace(
                                       ".",
                                       ","
@@ -2228,7 +3061,9 @@ function Painel({ email, sair }) {
                                     cartao.available_limit ??
                                       0
                                   )
-                                    .toFixed(2)
+                                    .toFixed(
+                                      2
+                                    )
                                     .replace(
                                       ".",
                                       ","
@@ -2263,9 +3098,12 @@ function Painel({ email, sair }) {
 
                             <div
                               style={{
-                                color: "#666",
-                                fontSize: 12,
-                                marginTop: 12,
+                                color:
+                                  "#666",
+                                fontSize:
+                                  12,
+                                marginTop:
+                                  12,
                               }}
                             >
                               {cartao.brand ||
@@ -2280,7 +3118,8 @@ function Painel({ email, sair }) {
                   <div
                     style={{
                       marginTop: 40,
-                      paddingTop: 30,
+                      paddingTop:
+                        30,
                       borderTop:
                         "1px solid #222",
                     }}
@@ -2294,32 +3133,47 @@ function Painel({ email, sair }) {
                     </h2>
 
                     <form
-                      onSubmit={criarCompra}
+                      onSubmit={
+                        criarCompra
+                      }
                       style={{
-                        marginTop: 20,
+                        marginTop:
+                          20,
                       }}
                     >
                       <select
-                        value={cartaoCompra}
+                        value={
+                          cartaoCompra
+                        }
                         onChange={(e) =>
                           setCartaoCompra(
                             e.target.value
                           )
                         }
                         required
-                        style={campo}
+                        style={
+                          campo
+                        }
                       >
                         <option value="">
                           Selecione o cartão
                         </option>
 
                         {cartoes.map(
-                          (cartao) => (
+                          (
+                            cartao
+                          ) => (
                             <option
-                              key={cartao.id}
-                              value={cartao.id}
+                              key={
+                                cartao.id
+                              }
+                              value={
+                                cartao.id
+                              }
                             >
-                              {cartao.name}
+                              {
+                                cartao.name
+                              }
                             </option>
                           )
                         )}
@@ -2328,14 +3182,18 @@ function Painel({ email, sair }) {
                       <input
                         type="text"
                         placeholder="Descrição da compra"
-                        value={descricaoCompra}
+                        value={
+                          descricaoCompra
+                        }
                         onChange={(e) =>
                           setDescricaoCompra(
                             e.target.value
                           )
                         }
                         required
-                        style={campo}
+                        style={
+                          campo
+                        }
                       />
 
                       <input
@@ -2343,26 +3201,34 @@ function Painel({ email, sair }) {
                         min="0"
                         step="0.01"
                         placeholder="Valor total"
-                        value={valorCompra}
+                        value={
+                          valorCompra
+                        }
                         onChange={(e) =>
                           setValorCompra(
                             e.target.value
                           )
                         }
                         required
-                        style={campo}
+                        style={
+                          campo
+                        }
                       />
 
                       <input
                         type="date"
-                        value={dataCompra}
+                        value={
+                          dataCompra
+                        }
                         onChange={(e) =>
                           setDataCompra(
                             e.target.value
                           )
                         }
                         required
-                        style={campo}
+                        style={
+                          campo
+                        }
                       />
 
                       <input
@@ -2379,39 +3245,51 @@ function Painel({ email, sair }) {
                           )
                         }
                         required
-                        style={campo}
+                        style={
+                          campo
+                        }
                       />
 
                       <input
                         type="text"
                         placeholder="Observação (opcional)"
-                        value={observacaoCompra}
+                        value={
+                          observacaoCompra
+                        }
                         onChange={(e) =>
                           setObservacaoCompra(
                             e.target.value
                           )
                         }
-                        style={campo}
+                        style={
+                          campo
+                        }
                       />
 
                       {Number(
                         totalParcelasCompra
                       ) > 1 &&
-                        Number(valorCompra) > 0 && (
+                        Number(
+                          valorCompra
+                        ) > 0 && (
                           <div
                             style={{
-                              marginTop: 12,
-                              padding: 14,
+                              marginTop:
+                                12,
+                              padding:
+                                14,
                               background:
                                 "#111",
                               border:
                                 "1px solid #222",
-                              borderRadius: 9,
-                              color: "#aaa",
+                              borderRadius:
+                                9,
+                              color:
+                                "#aaa",
                             }}
                           >
-                            Valor aproximado de cada
-                            parcela:{" "}
+                            Valor aproximado
+                            de cada parcela:{" "}
                             <strong>
                               R${" "}
                               {(
@@ -2422,7 +3300,9 @@ function Painel({ email, sair }) {
                                   totalParcelasCompra
                                 )
                               )
-                                .toFixed(2)
+                                .toFixed(
+                                  2
+                                )
                                 .replace(
                                   ".",
                                   ","
@@ -2433,27 +3313,44 @@ function Painel({ email, sair }) {
 
                       <button
                         type="submit"
-                        style={botao}
+                        style={
+                          botao
+                        }
                       >
                         Registrar compra
                       </button>
                     </form>
                   </div>
 
-                  <div style={{ marginTop: 35 }}>
-                    <span>HISTÓRICO</span>
-                    <h2>Compras</h2>
+                  <div
+                    style={{
+                      marginTop: 35,
+                    }}
+                  >
+                    <span>
+                      HISTÓRICO
+                    </span>
 
-                    {compras.length === 0 ? (
+                    <h2>
+                      Compras
+                    </h2>
+
+                    {compras.length ===
+                    0 ? (
                       <p>
-                        Nenhuma compra cadastrada.
+                        Nenhuma compra
+                        cadastrada.
                       </p>
                     ) : (
                       compras.map(
-                        (compra) => {
+                        (
+                          compra
+                        ) => {
                           const cartao =
                             cartoes.find(
-                              (item) =>
+                              (
+                                item
+                              ) =>
                                 String(
                                   item.id
                                 ) ===
@@ -2464,7 +3361,9 @@ function Painel({ email, sair }) {
 
                           return (
                             <div
-                              key={compra.id}
+                              key={
+                                compra.id
+                              }
                               style={{
                                 ...itemStyle,
                                 display:
@@ -2491,8 +3390,10 @@ function Painel({ email, sair }) {
                                     style={{
                                       color:
                                         "#777",
-                                      fontSize: 12,
-                                      marginTop: 6,
+                                      fontSize:
+                                        12,
+                                      marginTop:
+                                        6,
                                     }}
                                   >
                                     {cartao?.name ||
@@ -2507,8 +3408,10 @@ function Painel({ email, sair }) {
                                     style={{
                                       color:
                                         "#666",
-                                      fontSize: 12,
-                                      marginTop: 5,
+                                      fontSize:
+                                        12,
+                                      marginTop:
+                                        5,
                                     }}
                                   >
                                     {compra.total_installments ||
@@ -2523,7 +3426,9 @@ function Painel({ email, sair }) {
                                     compra.amount ||
                                       0
                                   )
-                                    .toFixed(2)
+                                    .toFixed(
+                                      2
+                                    )
                                     .replace(
                                       ".",
                                       ","
@@ -2537,20 +3442,37 @@ function Painel({ email, sair }) {
                     )}
                   </div>
 
-                  <div style={{ marginTop: 35 }}>
-                    <span>PARCELAS</span>
-                    <h2>Parcelas</h2>
+                  <div
+                    style={{
+                      marginTop: 35,
+                    }}
+                  >
+                    <span>
+                      PARCELAS
+                    </span>
 
-                    {parcelas.length === 0 ? (
+                    <h2>
+                      Parcelas
+                    </h2>
+
+                    {parcelas.length ===
+                    0 ? (
                       <p>
-                        Nenhuma parcela cadastrada.
+                        Nenhuma parcela
+                        cadastrada.
                       </p>
                     ) : (
                       parcelas.map(
-                        (parcela) => (
+                        (
+                          parcela
+                        ) => (
                           <div
-                            key={parcela.id}
-                            style={itemStyle}
+                            key={
+                              parcela.id
+                            }
+                            style={
+                              itemStyle
+                            }
                           >
                             <div>
                               <strong>
@@ -2568,8 +3490,10 @@ function Painel({ email, sair }) {
                                 style={{
                                   color:
                                     "#666",
-                                  fontSize: 12,
-                                  marginTop: 5,
+                                  fontSize:
+                                    12,
+                                  marginTop:
+                                    5,
                                 }}
                               >
                                 Vencimento:{" "}
@@ -2586,7 +3510,9 @@ function Painel({ email, sair }) {
                                   parcela.amount ||
                                     0
                                 )
-                                  .toFixed(2)
+                                  .toFixed(
+                                    2
+                                  )
                                   .replace(
                                     ".",
                                     ","
@@ -2595,35 +3521,90 @@ function Painel({ email, sair }) {
 
                               <div
                                 style={{
-                                  color: "#777",
-                                  fontSize: 12,
-                                  marginTop: 4,
-                                  textAlign: "right",
+                                  color:
+                                    "#777",
+                                  fontSize:
+                                    12,
+                                  marginTop:
+                                    4,
+                                  textAlign:
+                                    "right",
                                 }}
                               >
-                                {parcela.status === "paid" ? (
+                                {parcela.status ===
+                                "paid" ? (
                                   "Paga"
                                 ) : (
                                   <>
                                     <select
-                                      value={contasParcelaSelecionadas[parcela.id] || ""}
-                                      onChange={(e) => setContasParcelaSelecionadas((atual) => ({ ...atual, [parcela.id]: e.target.value }))}
-                                      style={{ ...campo, marginTop: 6, minWidth: 150 }}
+                                      value={
+                                        contasParcelaSelecionadas[
+                                          parcela.id
+                                        ] ||
+                                        ""
+                                      }
+                                      onChange={(
+                                        e
+                                      ) =>
+                                        setContasParcelaSelecionadas(
+                                          (
+                                            atual
+                                          ) => ({
+                                            ...atual,
+                                            [parcela.id]:
+                                              e
+                                                .target
+                                                .value,
+                                          })
+                                        )
+                                      }
+                                      style={{
+                                        ...campo,
+                                        marginTop:
+                                          6,
+                                        minWidth:
+                                          150,
+                                      }}
                                     >
-                                      <option value="">Conta para pagar</option>
-                                      {contas.map((conta) => (
-                                        <option key={conta.id ?? conta.uuid} value={conta.id ?? conta.uuid}>
-                                          {conta.name}
-                                        </option>
-                                      ))}
+                                      <option value="">
+                                        Conta para pagar
+                                      </option>
+
+                                      {contas.map(
+                                        (
+                                          conta
+                                        ) => (
+                                          <option
+                                            key={
+                                              conta.id ??
+                                              conta.uuid
+                                            }
+                                            value={
+                                              conta.id ??
+                                              conta.uuid
+                                            }
+                                          >
+                                            {
+                                              conta.name
+                                            }
+                                          </option>
+                                        )
+                                      )}
                                     </select>
+
                                     <button
                                       type="button"
-                                      onClick={() => pagarParcela(parcela)}
+                                      onClick={() =>
+                                        pagarParcela(
+                                          parcela
+                                        )
+                                      }
                                       style={{
                                         ...botao,
-                                        marginTop: 6,
-                                        padding: "8px 12px",
+                                        marginTop:
+                                          6,
+                                        padding:
+                                          "8px 12px",
                                       }}
                                     >
                                       Pagar parcela
@@ -2638,20 +3619,35 @@ function Painel({ email, sair }) {
                     )}
                   </div>
 
-                  <div style={{ marginTop: 35 }}>
-                    <span>FATURAS</span>
-                    <h2>Minhas faturas</h2>
+                  <div
+                    style={{
+                      marginTop: 35,
+                    }}
+                  >
+                    <span>
+                      FATURAS
+                    </span>
 
-                    {faturas.length === 0 ? (
+                    <h2>
+                      Minhas faturas
+                    </h2>
+
+                    {faturas.length ===
+                    0 ? (
                       <p>
-                        Nenhuma fatura cadastrada.
+                        Nenhuma fatura
+                        cadastrada.
                       </p>
                     ) : (
                       faturas.map(
-                        (fatura) => {
+                        (
+                          fatura
+                        ) => {
                           const cartao =
                             cartoes.find(
-                              (item) =>
+                              (
+                                item
+                              ) =>
                                 String(
                                   item.id
                                 ) ===
@@ -2675,7 +3671,9 @@ function Painel({ email, sair }) {
 
                           return (
                             <div
-                              key={fatura.id}
+                              key={
+                                fatura.id
+                              }
                               style={{
                                 ...itemStyle,
                                 display:
@@ -2701,8 +3699,10 @@ function Painel({ email, sair }) {
                                     style={{
                                       color:
                                         "#777",
-                                      fontSize: 12,
-                                      marginTop: 6,
+                                      fontSize:
+                                        12,
+                                      marginTop:
+                                        6,
                                     }}
                                   >
                                     Referência:{" "}
@@ -2715,8 +3715,10 @@ function Painel({ email, sair }) {
                                     style={{
                                       color:
                                         "#666",
-                                      fontSize: 12,
-                                      marginTop: 5,
+                                      fontSize:
+                                        12,
+                                      marginTop:
+                                        5,
                                     }}
                                   >
                                     Fechamento:{" "}
@@ -2734,8 +3736,10 @@ function Painel({ email, sair }) {
                                     style={{
                                       color:
                                         "#777",
-                                      fontSize: 12,
-                                      marginTop: 5,
+                                      fontSize:
+                                        12,
+                                      marginTop:
+                                        5,
                                     }}
                                   >
                                     Status:{" "}
@@ -2756,7 +3760,9 @@ function Painel({ email, sair }) {
                                       fatura.total_amount ||
                                         0
                                     )
-                                      .toFixed(2)
+                                      .toFixed(
+                                        2
+                                      )
                                       .replace(
                                         ".",
                                         ","
@@ -2767,13 +3773,17 @@ function Painel({ email, sair }) {
                                     style={{
                                       color:
                                         "#777",
-                                      fontSize: 12,
-                                      marginTop: 5,
+                                      fontSize:
+                                        12,
+                                      marginTop:
+                                        5,
                                     }}
                                   >
                                     Restante: R${" "}
                                     {restante
-                                      .toFixed(2)
+                                      .toFixed(
+                                        2
+                                      )
                                       .replace(
                                         ".",
                                         ","
@@ -2790,9 +3800,12 @@ function Painel({ email, sair }) {
                 </>
               )}
 
-              {active === "Relatórios" && (
+              {active ===
+                "Relatórios" && (
                 <>
-                  <span>FECHAMENTO</span>
+                  <span>
+                    FECHAMENTO
+                  </span>
 
                   <h2>
                     Fechamento financeiro
@@ -2800,7 +3813,8 @@ function Painel({ email, sair }) {
 
                   <div
                     style={{
-                      display: "grid",
+                      display:
+                        "grid",
                       gridTemplateColumns:
                         "repeat(auto-fit,minmax(220px,1fr))",
                       gap: 14,
@@ -2809,27 +3823,37 @@ function Painel({ email, sair }) {
                   >
                     <Resumo
                       titulo="Saldo atual"
-                      valor={totalContas}
+                      valor={
+                        totalContas
+                      }
                     />
 
                     <Resumo
                       titulo="Total de entradas"
-                      valor={totalEntradas}
+                      valor={
+                        totalEntradas
+                      }
                     />
 
                     <Resumo
                       titulo="Total de despesas"
-                      valor={totalDespesas}
+                      valor={
+                        totalDespesas
+                      }
                     />
 
                     <Resumo
                       titulo="Contas a pagar"
-                      valor={totalPagar}
+                      valor={
+                        totalPagar
+                      }
                     />
 
                     <Resumo
                       titulo="Faturas"
-                      valor={totalFaturas}
+                      valor={
+                        totalFaturas
+                      }
                     />
 
                     <Resumo
@@ -2850,11 +3874,17 @@ function Painel({ email, sair }) {
                 "Contas a pagar",
                 "Cartões",
                 "Relatórios",
-              ].includes(active) && (
+              ].includes(
+                active
+              ) && (
                 <>
-                  <span>MÓDULO</span>
+                  <span>
+                    MÓDULO
+                  </span>
 
-                  <h2>{active}</h2>
+                  <h2>
+                    {active}
+                  </h2>
 
                   <p>
                     Esta área será configurada
@@ -2867,10 +3897,13 @@ function Painel({ email, sair }) {
                 onClick={sair}
                 style={{
                   marginTop: 25,
-                  padding: "10px 15px",
-                  background: "#111",
+                  padding:
+                    "10px 15px",
+                  background:
+                    "#111",
                   color: "#888",
-                  border: "1px solid #222",
+                  border:
+                    "1px solid #222",
                   borderRadius: 8,
                 }}
               >
@@ -2879,8 +3912,10 @@ function Painel({ email, sair }) {
 
               <small
                 style={{
-                  display: "block",
-                  color: "#444",
+                  display:
+                    "block",
+                  color:
+                    "#444",
                   marginTop: 8,
                 }}
               >
@@ -2900,59 +3935,93 @@ function ListaVazia({
   children,
 }) {
   return (
-    <div style={{ marginTop: 25 }}>
-      {vazio ? <p>{texto}</p> : children}
+    <div
+      style={{
+        marginTop: 25,
+      }}
+    >
+      {vazio
+        ? <p>{texto}</p>
+        : children}
     </div>
   );
 }
 
-function Resumo({ titulo, valor }) {
+function Resumo({
+  titulo,
+  valor,
+}) {
   return (
     <div
       style={{
         padding: 20,
-        background: "#111",
-        border: "1px solid #222",
+        background:
+          "#111",
+        border:
+          "1px solid #222",
         borderRadius: 12,
       }}
     >
-      <span>{titulo}</span>
+      <span>
+        {titulo}
+      </span>
 
-      <h3 style={{ fontSize: 26 }}>
+      <h3
+        style={{
+          fontSize: 26,
+        }}
+      >
         R${" "}
-        {Number(valor || 0)
+        {Number(
+          valor || 0
+        )
           .toFixed(2)
-          .replace(".", ",")}
+          .replace(
+            ".",
+            ","
+          )}
       </h3>
     </div>
   );
 }
 
 function Login() {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
+  const [email, setEmail] =
+    useState("");
+
+  const [senha, setSenha] =
+    useState("");
+
   const [modoCadastro, setModoCadastro] =
     useState(false);
-  const [mensagem, setMensagem] = useState("");
+
+  const [mensagem, setMensagem] =
+    useState("");
 
   async function entrar(e) {
     e.preventDefault();
 
-    setMensagem("Aguarde...");
+    setMensagem(
+      "Aguarde..."
+    );
 
-    const resultado = modoCadastro
-      ? await supabase.auth.signUp({
-          email,
-          password: senha,
-        })
-      : await supabase.auth.signInWithPassword({
-          email,
-          password: senha,
-        });
+    const resultado =
+      modoCadastro
+        ? await supabase.auth.signUp({
+            email,
+            password:
+              senha,
+          })
+        : await supabase.auth.signInWithPassword({
+            email,
+            password:
+              senha,
+          });
 
     if (resultado.error) {
       setMensagem(
-        resultado.error.message
+        resultado.error
+          .message
       );
     } else {
       setMensagem(
@@ -2966,28 +4035,44 @@ function Login() {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background: "#050505",
+        minHeight:
+          "100vh",
+        background:
+          "#050505",
         color: "#fff",
-        display: "grid",
-        placeItems: "center",
+        display:
+          "grid",
+        placeItems:
+          "center",
         padding: 20,
       }}
     >
       <form
         onSubmit={entrar}
         style={{
-          width: "100%",
-          maxWidth: 380,
-          background: "#0b0b0b",
-          border: "1px solid #222",
-          borderRadius: 18,
+          width:
+            "100%",
+          maxWidth:
+            380,
+          background:
+            "#0b0b0b",
+          border:
+            "1px solid #222",
+          borderRadius:
+            18,
           padding: 28,
         }}
       >
-        <h1>Or Finance</h1>
+        <h1>
+          Or Finance
+        </h1>
 
-        <p style={{ color: "#777" }}>
+        <p
+          style={{
+            color:
+              "#777",
+          }}
+        >
           {modoCadastro
             ? "Criar sua conta"
             : "Entrar na sua conta"}
@@ -2996,29 +4081,43 @@ function Login() {
         <input
           type="email"
           placeholder="Seu e-mail"
-          value={email}
+          value={
+            email
+          }
           onChange={(e) =>
-            setEmail(e.target.value)
+            setEmail(
+              e.target.value
+            )
           }
           required
-          style={campo}
+          style={
+            campo
+          }
         />
 
         <input
           type="password"
           placeholder="Sua senha"
-          value={senha}
+          value={
+            senha
+          }
           onChange={(e) =>
-            setSenha(e.target.value)
+            setSenha(
+              e.target.value
+            )
           }
           required
           minLength={6}
-          style={campo}
+          style={
+            campo
+          }
         />
 
         <button
           type="submit"
-          style={botao}
+          style={
+            botao
+          }
         >
           {modoCadastro
             ? "Criar conta"
@@ -3031,9 +4130,14 @@ function Login() {
             setModoCadastro(
               !modoCadastro
             );
-            setMensagem("");
+
+            setMensagem(
+              ""
+            );
           }}
-          style={troca}
+          style={
+            troca
+          }
         >
           {modoCadastro
             ? "Já tenho uma conta"
@@ -3043,8 +4147,10 @@ function Login() {
         {mensagem && (
           <p
             style={{
-              color: "#aaa",
-              marginTop: 18,
+              color:
+                "#aaa",
+              marginTop:
+                18,
             }}
           >
             {mensagem}
@@ -3065,24 +4171,42 @@ export default function App() {
   useEffect(() => {
     supabase.auth
       .getSession()
-      .then(({ data }) => {
-        setUsuario(
-          data.session?.user ?? null
-        );
+      .then(
+        ({
+          data,
+        }) => {
+          setUsuario(
+            data.session
+              ?.user ??
+              null
+          );
 
-        setCarregando(false);
-      });
+          setCarregando(
+            false
+          );
+        }
+      );
 
     const {
-      data: { subscription },
+      data: {
+        subscription,
+      },
     } =
       supabase.auth.onAuthStateChange(
-        (_event, session) => {
-          setTimeout(() => {
-            setUsuario(
-              session?.user ?? null
-            );
-          }, 0);
+        (
+          _event,
+          session
+        ) => {
+          setTimeout(
+            () => {
+              setUsuario(
+                session
+                  ?.user ??
+                  null
+              );
+            },
+            0
+          );
         }
       );
 
@@ -3098,11 +4222,15 @@ export default function App() {
     return (
       <div
         style={{
-          minHeight: "100vh",
-          background: "#050505",
+          minHeight:
+            "100vh",
+          background:
+            "#050505",
           color: "#fff",
-          display: "grid",
-          placeItems: "center",
+          display:
+            "grid",
+          placeItems:
+            "center",
         }}
       >
         Carregando...
@@ -3111,58 +4239,92 @@ export default function App() {
   }
 
   if (!usuario) {
-    return <Login />;
+    return (
+      <Login />
+    );
   }
 
   return (
     <Painel
-      email={usuario.email}
+      email={
+        usuario.email
+      }
       sair={sair}
     />
   );
 }
 
 const campo = {
-  width: "100%",
-  padding: "13px",
-  marginTop: 12,
-  background: "#111",
-  color: "#fff",
-  border: "1px solid #292929",
-  borderRadius: 9,
-  outline: "none",
+  width:
+    "100%",
+  padding:
+    "13px",
+  marginTop:
+    12,
+  background:
+    "#111",
+  color:
+    "#fff",
+  border:
+    "1px solid #292929",
+  borderRadius:
+    9,
+  outline:
+    "none",
 };
 
 const botao = {
-  width: "100%",
-  padding: "13px",
-  marginTop: 18,
-  background: "#fff",
-  color: "#000",
+  width:
+    "100%",
+  padding:
+    "13px",
+  marginTop:
+    18,
+  background:
+    "#fff",
+  color:
+    "#000",
   border: 0,
-  borderRadius: 9,
-  fontWeight: 700,
-  cursor: "pointer",
+  borderRadius:
+    9,
+  fontWeight:
+    700,
+  cursor:
+    "pointer",
 };
 
 const troca = {
-  width: "100%",
-  padding: "12px",
-  marginTop: 8,
-  background: "transparent",
-  color: "#aaa",
+  width:
+    "100%",
+  padding:
+    "12px",
+  marginTop:
+    8,
+  background:
+    "transparent",
+  color:
+    "#aaa",
   border: 0,
-  cursor: "pointer",
+  cursor:
+    "pointer",
 };
 
 const itemStyle = {
-  padding: 15,
-  marginTop: 10,
-  background: "#111",
-  border: "1px solid #222",
-  borderRadius: 10,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
+  padding:
+    15,
+  marginTop:
+    10,
+  background:
+    "#111",
+  border:
+    "1px solid #222",
+  borderRadius:
+    10,
+  display:
+    "flex",
+  justifyContent:
+    "space-between",
+  alignItems:
+    "center",
   gap: 15,
 };
