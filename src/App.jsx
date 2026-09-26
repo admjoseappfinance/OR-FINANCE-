@@ -25,6 +25,14 @@ function getCardIdColumn(card) {
   return card?.id !== undefined && card?.id !== null ? "id" : "uuid";
 }
 
+function getRowId(row) {
+  return row?.id ?? row?.uuid ?? null;
+}
+
+function getRowIdColumn(row) {
+  return row?.id !== undefined && row?.id !== null ? "id" : "uuid";
+}
+
 function Painel({ email, sair }) {
   const [contas, setContas] = useState([]);
   const [entradas, setEntradas] = useState([]);
@@ -1008,6 +1016,11 @@ function Painel({ email, sair }) {
       return;
     }
 
+    if (!getCardId(cartao)) {
+      alert("O cartão selecionado não possui um ID válido no banco de dados.");
+      return;
+    }
+
     const valor =
       Number(valorCompra) || 0;
 
@@ -1095,6 +1108,12 @@ function Painel({ email, sair }) {
         fatura = novaFatura;
       }
 
+      const identificadorFatura = getRowId(fatura);
+
+      if (!identificadorFatura) {
+        throw new Error("A fatura foi criada, mas o ID da fatura não foi retornado pelo banco.");
+      }
+
       return fatura;
     }
 
@@ -1118,7 +1137,7 @@ function Painel({ email, sair }) {
       .insert({
         user_id: user.id,
         card_id: getCardId(cartao),
-        invoice_id: faturaInicial.id,
+        invoice_id: getRowId(faturaInicial),
         category_id: null,
         description: descricaoCompra,
         amount: valor,
@@ -1134,6 +1153,11 @@ function Painel({ email, sair }) {
 
     if (erroCompra) {
       alert(erroCompra.message);
+      return;
+    }
+
+    if (!getRowId(compraCriada)) {
+      alert("A compra foi criada, mas o ID da compra não foi retornado pelo banco.");
       return;
     }
 
@@ -1202,7 +1226,7 @@ function Painel({ email, sair }) {
       }
 
       faturasAtualizar.set(
-        fatura.id,
+        getRowId(fatura),
         {
           fatura,
           valor:
@@ -1215,7 +1239,7 @@ function Painel({ email, sair }) {
       listaParcelas.push({
         user_id: user.id,
         purchase_id:
-          compraCriada.id,
+          getRowId(compraCriada),
         installment_number: i,
         total_installments:
           totalParcelas,
@@ -1254,8 +1278,8 @@ function Painel({ email, sair }) {
             status: "open",
           })
           .eq(
-            "id",
-            fatura.id
+            getRowIdColumn(fatura),
+            getRowId(fatura)
           );
 
       if (error) {
