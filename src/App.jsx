@@ -26,11 +26,11 @@ function getCardIdColumn(card) {
 }
 
 function getRowId(row) {
-  return row?.id ?? row?.uuid ?? null;
+  return row?.id ?? null;
 }
 
-function getRowIdColumn(row) {
-  return row?.id !== undefined && row?.id !== null ? "id" : "uuid";
+function getRowIdColumn() {
+  return "id";
 }
 
 function Painel({ email, sair }) {
