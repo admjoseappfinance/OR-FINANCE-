@@ -207,7 +207,7 @@ function Painel({ email, sair }) {
       const limite = Number(cartao.credit_limit || 0);
 
       const utilizado = Number(
-        utilizadoPorCartao[String(cartao.id)] || 0
+        utilizadoPorCartao[String((cartao.id ?? cartao.uuid))] || 0
       );
 
       const disponivel = Math.max(
@@ -226,7 +226,7 @@ function Painel({ email, sair }) {
           .update({
             available_limit: disponivel,
           })
-          .eq("id", cartao.id)
+          .eq("id", (cartao.id ?? cartao.uuid))
           .eq("user_id", user.id);
 
         if (erroAtualizacao) {
@@ -840,7 +840,7 @@ function Painel({ email, sair }) {
         brand: bandeiraCartao || null,
         color: corCartao || "#ffffff",
       })
-      .eq("id", cartaoEditando.id)
+      .eq("id", (cartaoEditando.id ?? cartaoEditando.uuid))
       .eq("user_id", user.id);
 
     if (error) {
@@ -1051,7 +1051,7 @@ function Painel({ email, sair }) {
         .from("invoices")
         .select("*")
         .eq("user_id", user.id)
-        .eq("card_id", cartao.id)
+        .eq("card_id", (cartao.id ?? cartao.uuid))
         .eq(
           "reference_month",
           dados.referenceMonth
@@ -1068,7 +1068,7 @@ function Painel({ email, sair }) {
           .from("invoices")
           .insert({
             user_id: user.id,
-            card_id: cartao.id,
+            card_id: (cartao.id ?? cartao.uuid),
             reference_month:
               dados.referenceMonth,
             closing_date:
@@ -1109,7 +1109,7 @@ function Painel({ email, sair }) {
       .from("card_purchases")
       .insert({
         user_id: user.id,
-        card_id: cartao.id,
+        card_id: (cartao.id ?? cartao.uuid),
         invoice_id: faturaInicial.id,
         category_id: null,
         description: descricaoCompra,
@@ -2916,7 +2916,7 @@ function Painel({ email, sair }) {
                         ) => (
                           <div
                             key={
-                              cartao.id
+                              (cartao.id ?? cartao.uuid)
                             }
                             style={{
                               padding:
@@ -3165,10 +3165,10 @@ function Painel({ email, sair }) {
                           ) => (
                             <option
                               key={
-                                cartao.id
+                                (cartao.id ?? cartao.uuid)
                               }
                               value={
-                                cartao.id
+                                (cartao.id ?? cartao.uuid)
                               }
                             >
                               {
