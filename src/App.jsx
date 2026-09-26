@@ -17,6 +17,14 @@ const menu = [
   "Relatórios",
 ];
 
+function getCardId(card) {
+  return card?.id ?? card?.uuid ?? null;
+}
+
+function getCardIdColumn(card) {
+  return card?.id !== undefined && card?.id !== null ? "id" : "uuid";
+}
+
 function Painel({ email, sair }) {
   const [contas, setContas] = useState([]);
   const [entradas, setEntradas] = useState([]);
@@ -207,7 +215,7 @@ function Painel({ email, sair }) {
       const limite = Number(cartao.credit_limit || 0);
 
       const utilizado = Number(
-        utilizadoPorCartao[String((cartao.id ?? cartao.uuid))] || 0
+        utilizadoPorCartao[String(getCardId(cartao))] || 0
       );
 
       const disponivel = Math.max(
@@ -226,7 +234,7 @@ function Painel({ email, sair }) {
           .update({
             available_limit: disponivel,
           })
-          .eq("id", (cartao.id ?? cartao.uuid))
+          .eq(getCardIdColumn(cartao), getCardId(cartao))
           .eq("user_id", user.id);
 
         if (erroAtualizacao) {
@@ -840,7 +848,7 @@ function Painel({ email, sair }) {
         brand: bandeiraCartao || null,
         color: corCartao || "#ffffff",
       })
-      .eq("id", (cartaoEditando.id ?? cartaoEditando.uuid))
+      .eq(getCardIdColumn(cartaoEditando), getCardId(cartaoEditando))
       .eq("user_id", user.id);
 
     if (error) {
@@ -991,7 +999,7 @@ function Painel({ email, sair }) {
 
     const cartao = cartoesAtualizados.find(
       (item) =>
-        String(item.id) ===
+        String(getCardId(item)) ===
         String(cartaoCompra)
     );
 
@@ -1051,7 +1059,7 @@ function Painel({ email, sair }) {
         .from("invoices")
         .select("*")
         .eq("user_id", user.id)
-        .eq("card_id", (cartao.id ?? cartao.uuid))
+        .eq("card_id", getCardId(cartao))
         .eq(
           "reference_month",
           dados.referenceMonth
@@ -1068,7 +1076,7 @@ function Painel({ email, sair }) {
           .from("invoices")
           .insert({
             user_id: user.id,
-            card_id: (cartao.id ?? cartao.uuid),
+            card_id: getCardId(cartao),
             reference_month:
               dados.referenceMonth,
             closing_date:
@@ -1109,7 +1117,7 @@ function Painel({ email, sair }) {
       .from("card_purchases")
       .insert({
         user_id: user.id,
-        card_id: (cartao.id ?? cartao.uuid),
+        card_id: getCardId(cartao),
         invoice_id: faturaInicial.id,
         category_id: null,
         description: descricaoCompra,
@@ -2916,7 +2924,7 @@ function Painel({ email, sair }) {
                         ) => (
                           <div
                             key={
-                              (cartao.id ?? cartao.uuid)
+                              getCardId(cartao)
                             }
                             style={{
                               padding:
@@ -3165,10 +3173,10 @@ function Painel({ email, sair }) {
                           ) => (
                             <option
                               key={
-                                (cartao.id ?? cartao.uuid)
+                                getCardId(cartao)
                               }
                               value={
-                                (cartao.id ?? cartao.uuid)
+                                getCardId(cartao)
                               }
                             >
                               {
