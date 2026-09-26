@@ -17,16 +17,34 @@ const menu = [
   "Relatórios",
 ];
 
-function getCardId(card) {
-  return card?.id ?? card?.uuid ?? null;
+function normalizarId(valor) {
+  if (valor === undefined || valor === null) return null;
+
+  const texto = String(valor).trim();
+
+  if (!texto || texto === "null" || texto === "undefined") {
+    return null;
+  }
+
+  return texto;
 }
 
-function getCardIdColumn(card) {
-  return card?.id !== undefined && card?.id !== null ? "id" : "uuid";
+function getCardId(card) {
+  return normalizarId(card?.id);
+}
+
+function getCardIdColumn() {
+  return "id";
+}
+
+function isUuid(valor) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(valor || "")
+  );
 }
 
 function getRowId(row) {
-  return row?.id ?? null;
+  return normalizarId(row?.id);
 }
 
 function getRowIdColumn() {
@@ -1016,8 +1034,10 @@ function Painel({ email, sair }) {
       return;
     }
 
-    if (!getCardId(cartao)) {
-      alert("O cartão selecionado não possui um ID válido no banco de dados.");
+    const idCartao = getCardId(cartao);
+
+    if (!idCartao || !isUuid(idCartao)) {
+      alert("O cartão selecionado possui um ID inválido. Cadastre novamente o cartão antes de fazer uma compra.");
       return;
     }
 
@@ -1072,7 +1092,7 @@ function Painel({ email, sair }) {
         .from("invoices")
         .select("*")
         .eq("user_id", user.id)
-        .eq("card_id", getCardId(cartao))
+        .eq("card_id", idCartao)
         .eq(
           "reference_month",
           dados.referenceMonth
@@ -1089,7 +1109,7 @@ function Painel({ email, sair }) {
           .from("invoices")
           .insert({
             user_id: user.id,
-            card_id: getCardId(cartao),
+            card_id: idCartao,
             reference_month:
               dados.referenceMonth,
             closing_date:
@@ -1110,8 +1130,8 @@ function Painel({ email, sair }) {
 
       const identificadorFatura = getRowId(fatura);
 
-      if (!identificadorFatura) {
-        throw new Error("A fatura foi criada, mas o ID da fatura não foi retornado pelo banco.");
+      if (!identificadorFatura || !isUuid(identificadorFatura)) {
+        throw new Error("A fatura foi criada, mas o ID retornado pelo banco é inválido.");
       }
 
       return fatura;
@@ -1136,7 +1156,7 @@ function Painel({ email, sair }) {
       .from("card_purchases")
       .insert({
         user_id: user.id,
-        card_id: getCardId(cartao),
+        card_id: idCartao,
         invoice_id: getRowId(faturaInicial),
         category_id: null,
         description: descricaoCompra,
@@ -1156,8 +1176,8 @@ function Painel({ email, sair }) {
       return;
     }
 
-    if (!getRowId(compraCriada)) {
-      alert("A compra foi criada, mas o ID da compra não foi retornado pelo banco.");
+    if (!getRowId(compraCriada) || !isUuid(getRowId(compraCriada))) {
+      alert("A compra foi criada, mas o ID retornado pelo banco é inválido.");
       return;
     }
 
