@@ -238,10 +238,18 @@ function Painel({ email, sair }) {
     const cartoesAtualizados = [];
 
     for (const cartao of cartoesData || []) {
+      const idCartao = getCardId(cartao);
+
+      // Nunca enviaremos "null"/"undefined" para uma coluna UUID.
+      // Isso evita o erro: invalid input syntax for type uuid: "null".
+      if (!isUuid(idCartao)) {
+        continue;
+      }
+
       const limite = Number(cartao.credit_limit || 0);
 
       const utilizado = Number(
-        utilizadoPorCartao[String(getCardId(cartao))] || 0
+        utilizadoPorCartao[String(idCartao)] || 0
       );
 
       const disponivel = Math.max(
@@ -260,7 +268,7 @@ function Painel({ email, sair }) {
           .update({
             available_limit: disponivel,
           })
-          .eq(getCardIdColumn(cartao), getCardId(cartao))
+          .eq(getCardIdColumn(cartao), idCartao)
           .eq("user_id", user.id);
 
         if (erroAtualizacao) {
@@ -1001,32 +1009,13 @@ function Painel({ email, sair }) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return;
-
-    /*
-     * Antes de autorizar a compra, recalculamos o limite.
-     * Isso garante que compras antigas sejam consideradas.
-     */
-    await carregarCartoes();
-
-    const { data: cartoesAtualizados } =
-      await supabase
-        .from("cards")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", {
-          ascending: false,
-        });
-
-    if (!cartoesAtualizados) {
-      alert("Não foi possível carregar os cartões.");
+    if (!user?.id || !isUuid(user.id)) {
+      alert("Sua sessão não possui um ID de usuário válido. Faça login novamente.");
       return;
     }
 
-    const cartao = cartoesAtualizados.find(
-      (item) =>
-        String(getCardId(item)) ===
-        String(cartaoCompra)
+    const cartao = cartoes.find(
+      (item) => String(getCardId(item)) === String(cartaoCompra)
     );
 
     if (!cartao) {
@@ -1036,35 +1025,24 @@ function Painel({ email, sair }) {
 
     const idCartao = getCardId(cartao);
 
-    if (!idCartao || !isUuid(idCartao)) {
-      alert("O cartão selecionado possui um ID inválido. Cadastre novamente o cartão antes de fazer uma compra.");
+    if (!isUuid(idCartao)) {
+      alert("O cartão selecionado possui um ID inválido no banco de dados.");
       return;
     }
 
-    const valor =
-      Number(valorCompra) || 0;
-
-    const totalParcelas = Math.max(
-      1,
-      Number(totalParcelasCompra) || 1
-    );
+    const valor = Number(valorCompra) || 0;
+    const totalParcelas = Math.max(1, Number(totalParcelasCompra) || 1);
 
     if (valor <= 0) {
       alert("Informe um valor válido.");
       return;
     }
 
-    const limiteDisponivelAtual =
-      Number(
-        cartao.available_limit ??
-          cartao.credit_limit ??
-          0
-      );
+    const limiteDisponivelAtual = Number(
+      cartao.available_limit ?? cartao.credit_limit ?? 0
+    );
 
-    if (
-      valor >
-      limiteDisponivelAtual
-    ) {
+    if (valor > limiteDisponivelAtual) {
       alert(
         `Compra não autorizada. O limite disponível é de R$ ${limiteDisponivelAtual
           .toFixed(2)
@@ -1073,254 +1051,174 @@ function Painel({ email, sair }) {
       return;
     }
 
-    const valorParcela =
-      valor / totalParcelas;
+    const valorParcela = valor / totalParcelas;
+    const primeiraFaturaDados = calcularFatura(cartao, dataCompra);
 
-    const primeiraFatura =
-      calcularFatura(
-        cartao,
-        dataCompra
+    // Busca/cria todas as faturas antes de gravar a compra.
+    // Assim nenhum registro fica apontando para um ID nulo.
+    const faturasCompra = [];
+
+    for (let i = 1; i <= totalParcelas; i++) {
+      const referencia = adicionarMes(
+        new Date(`${primeiraFaturaDados.referenceMonth}T00:00:00`),
+        i - 1
+      );
+      const fechamento = adicionarMes(
+        new Date(`${primeiraFaturaDados.closingDate}T00:00:00`),
+        i - 1
+      );
+      const vencimento = adicionarMes(
+        new Date(`${primeiraFaturaDados.dueDate}T00:00:00`),
+        i - 1
       );
 
-    async function obterOuCriarFatura(
-      dados
-    ) {
-      let {
-        data: fatura,
-        error,
-      } = await supabase
+      const dadosFatura = {
+        referenceMonth: `${referencia.getFullYear()}-${String(
+          referencia.getMonth() + 1
+        ).padStart(2, "0")}-01`,
+        closingDate: dataParaString(fechamento),
+        dueDate: dataParaString(vencimento),
+      };
+
+      let { data: fatura, error: erroBusca } = await supabase
         .from("invoices")
-        .select("*")
+        .select("id, user_id, card_id, reference_month, closing_date, due_date, total_amount, paid_amount, status")
         .eq("user_id", user.id)
         .eq("card_id", idCartao)
-        .eq(
-          "reference_month",
-          dados.referenceMonth
-        )
+        .eq("reference_month", dadosFatura.referenceMonth)
         .maybeSingle();
 
-      if (error) throw error;
+      if (erroBusca) {
+        alert(`Erro ao buscar a fatura: ${erroBusca.message}`);
+        return;
+      }
 
       if (!fatura) {
-        const {
-          data: novaFatura,
-          error: erroNova,
-        } = await supabase
+        const resultado = await supabase
           .from("invoices")
           .insert({
             user_id: user.id,
             card_id: idCartao,
-            reference_month:
-              dados.referenceMonth,
-            closing_date:
-              dados.closingDate,
-            due_date:
-              dados.dueDate,
+            reference_month: dadosFatura.referenceMonth,
+            closing_date: dadosFatura.closingDate,
+            due_date: dadosFatura.dueDate,
             total_amount: 0,
             paid_amount: 0,
             status: "open",
           })
-          .select()
+          .select("id, user_id, card_id, reference_month, closing_date, due_date, total_amount, paid_amount, status")
           .single();
 
-        if (erroNova) throw erroNova;
+        if (resultado.error) {
+          alert(`Erro ao criar a fatura: ${resultado.error.message}`);
+          return;
+        }
 
-        fatura = novaFatura;
+        fatura = resultado.data;
       }
 
-      const identificadorFatura = getRowId(fatura);
-
-      if (!identificadorFatura || !isUuid(identificadorFatura)) {
-        throw new Error("A fatura foi criada, mas o ID retornado pelo banco é inválido.");
-      }
-
-      return fatura;
-    }
-
-    let faturaInicial;
-
-    try {
-      faturaInicial =
-        await obterOuCriarFatura(
-          primeiraFatura
-        );
-    } catch (error) {
-      alert(error.message);
-      return;
-    }
-
-    const {
-      data: compraCriada,
-      error: erroCompra,
-    } = await supabase
-      .from("card_purchases")
-      .insert({
-        user_id: user.id,
-        card_id: idCartao,
-        invoice_id: getRowId(faturaInicial),
-        category_id: null,
-        description: descricaoCompra,
-        amount: valor,
-        purchase_date: dataCompra,
-        total_installments:
-          totalParcelas,
-        current_installment: 1,
-        notes:
-          observacaoCompra || null,
-      })
-      .select()
-      .single();
-
-    if (erroCompra) {
-      alert(erroCompra.message);
-      return;
-    }
-
-    if (!getRowId(compraCriada) || !isUuid(getRowId(compraCriada))) {
-      alert("A compra foi criada, mas o ID retornado pelo banco é inválido.");
-      return;
-    }
-
-    const listaParcelas = [];
-    const faturasAtualizar =
-      new Map();
-
-    for (
-      let i = 1;
-      i <= totalParcelas;
-      i++
-    ) {
-      const vencimento =
-        adicionarMes(
-          new Date(
-            `${faturaInicial.due_date}T00:00:00`
-          ),
-          i - 1
-        );
-
-      const fechamento =
-        adicionarMes(
-          new Date(
-            `${faturaInicial.closing_date}T00:00:00`
-          ),
-          i - 1
-        );
-
-      const referencia =
-        adicionarMes(
-          new Date(
-            `${faturaInicial.reference_month}T00:00:00`
-          ),
-          i - 1
-        );
-
-      const dadosFatura = {
-        referenceMonth:
-          `${referencia.getFullYear()}-${String(
-            referencia.getMonth() + 1
-          ).padStart(2, "0")}-01`,
-
-        closingDate:
-          dataParaString(
-            fechamento
-          ),
-
-        dueDate:
-          dataParaString(
-            vencimento
-          ),
-      };
-
-      let fatura;
-
-      try {
-        fatura =
-          i === 1
-            ? primeiraFatura
-            : await obterOuCriarFatura(
-                dadosFatura
-              );
-      } catch (error) {
-        alert(error.message);
+      if (!fatura?.id || !isUuid(fatura.id)) {
+        alert("O banco não retornou um ID válido para a fatura.");
         return;
       }
 
-      faturasAtualizar.set(
-        getRowId(fatura),
-        {
-          fatura,
-          valor:
-            Number(
-              fatura.total_amount || 0
-            ) + valorParcela,
-        }
-      );
-
-      listaParcelas.push({
-        user_id: user.id,
-        purchase_id:
-          getRowId(compraCriada),
-        installment_number: i,
-        total_installments:
-          totalParcelas,
-        amount: valorParcela,
-        due_date:
-          dataParaString(
-            vencimento
-          ),
-        status: "pending",
-      });
+      faturasCompra.push({ fatura, valorParcela });
     }
 
-    const {
-      error: erroParcelas,
-    } = await supabase
+    if (!faturasCompra.length || !faturasCompra[0]?.fatura?.id) {
+      alert("Não foi possível obter uma fatura válida para a compra.");
+      return;
+    }
+
+    const idFaturaPrincipal = faturasCompra[0].fatura.id;
+
+    if (!isUuid(idFaturaPrincipal)) {
+      alert("A fatura selecionada possui um ID inválido.");
+      return;
+    }
+
+    // Grava a compra sem enviar campos UUID opcionais como null.
+    const dadosCompra = {
+      user_id: user.id,
+      card_id: idCartao,
+      invoice_id: idFaturaPrincipal,
+      description: descricaoCompra,
+      amount: valor,
+      purchase_date: dataCompra,
+      total_installments: totalParcelas,
+      current_installment: 1,
+    };
+
+    if (observacaoCompra?.trim()) {
+      dadosCompra.notes = observacaoCompra.trim();
+    }
+
+    const { data: compraCriada, error: erroCompra } = await supabase
+      .from("card_purchases")
+      .insert(dadosCompra)
+      .select("id, user_id, card_id, invoice_id, description, amount, purchase_date, total_installments, current_installment, notes")
+      .single();
+
+    if (erroCompra) {
+      alert(`Erro ao registrar a compra: ${erroCompra.message}`);
+      return;
+    }
+
+    if (!compraCriada?.id || !isUuid(compraCriada.id)) {
+      alert("A compra foi registrada, mas o banco não retornou um ID válido.");
+      return;
+    }
+
+    // Prepara as parcelas usando somente UUIDs já validados.
+    const listaParcelas = faturasCompra.map(({ fatura, valorParcela }, index) => ({
+      user_id: user.id,
+      purchase_id: compraCriada.id,
+      installment_number: index + 1,
+      total_installments: totalParcelas,
+      amount: valorParcela,
+      due_date: fatura.due_date,
+      status: "pending",
+    }));
+
+    const { error: erroParcelas } = await supabase
       .from("card_installments")
       .insert(listaParcelas);
 
     if (erroParcelas) {
-      alert(erroParcelas.message);
+      // A compra não deve ficar incompleta se a criação das parcelas falhar.
+      await supabase
+        .from("card_purchases")
+        .delete()
+        .eq("id", compraCriada.id)
+        .eq("user_id", user.id);
+
+      alert(`Erro ao registrar as parcelas: ${erroParcelas.message}`);
       return;
     }
 
-    for (
-      const {
-        fatura,
-        valor: novoTotal,
-      } of faturasAtualizar.values()
-    ) {
-      const { error } =
-        await supabase
-          .from("invoices")
-          .update({
-            total_amount:
-              novoTotal,
-            status: "open",
-          })
-          .eq(
-            getRowIdColumn(fatura),
-            getRowId(fatura)
-          );
+    // Agora soma cada parcela à sua respectiva fatura.
+    for (const { fatura, valorParcela } of faturasCompra) {
+      const novoTotal = Number(fatura.total_amount || 0) + valorParcela;
 
-      if (error) {
-        alert(error.message);
+      const { error: erroAtualizacaoFatura } = await supabase
+        .from("invoices")
+        .update({
+          total_amount: novoTotal,
+          status: "open",
+        })
+        .eq("id", fatura.id)
+        .eq("user_id", user.id);
+
+      if (erroAtualizacaoFatura) {
+        alert(`Erro ao atualizar a fatura: ${erroAtualizacaoFatura.message}`);
         return;
       }
     }
 
-    /*
-     * Não diminuímos o limite manualmente.
-     * O limite será calculado pelas parcelas pendentes.
-     */
-
     setCartaoCompra("");
     setDescricaoCompra("");
     setValorCompra("");
-    setDataCompra(
-      new Date()
-        .toISOString()
-        .split("T")[0]
-    );
+    setDataCompra(new Date().toISOString().split("T")[0]);
     setTotalParcelasCompra("1");
     setObservacaoCompra("");
 
