@@ -51,7 +51,7 @@ function getRowIdColumn() {
   return "id";
 }
 
-function Painel({ email, sair }) {
+function Painel({ email, sair, userId }) {
   const [contas, setContas] = useState([]);
   const [entradas, setEntradas] = useState([]);
   const [despesas, setDespesas] = useState([]);
@@ -104,6 +104,7 @@ function Painel({ email, sair }) {
 
   const [active, setActive] = useState("Início");
   const [menuAberto, setMenuAberto] = useState(false);
+  const [restaurando, setRestaurando] = useState(false);
 
   async function carregarContas() {
     const { data, error } = await supabase
@@ -1248,6 +1249,62 @@ function Painel({ email, sair }) {
   function selecionar(item) {
     setActive(item);
     setMenuAberto(false);
+  }
+
+  async function restaurarAplicativo() {
+    if (restaurando) return;
+
+    const confirmar = window.confirm(
+      "ATENÇÃO: isso vai apagar todos os dados financeiros desta conta, como contas, entradas, despesas, contas a pagar, cartões, compras, faturas e metas. Seu login será mantido. Deseja continuar?"
+    );
+
+    if (!confirmar) return;
+
+    setRestaurando(true);
+
+    const tabelas = [
+      "goal_transactions",
+      "card_installments",
+      "card_purchases",
+      "invoices",
+      "detected_transactions",
+      "bills",
+      "incomes",
+      "expenses",
+      "goals",
+      "automation_settings",
+      "monitored_apps",
+      "cards",
+      "accounts",
+      "categories",
+    ];
+
+    for (const tabela of tabelas) {
+      const { error } = await supabase
+        .from(tabela)
+        .delete()
+        .eq("user_id", userId);
+
+      if (error) {
+        console.error(`Erro ao restaurar ${tabela}:`, error);
+        alert(`Não foi possível restaurar o aplicativo. Erro em ${tabela}: ${error.message}`);
+        setRestaurando(false);
+        return;
+      }
+    }
+
+    setContas([]);
+    setEntradas([]);
+    setDespesas([]);
+    setContasPagar([]);
+    setCartoes([]);
+    setCompras([]);
+    setParcelas([]);
+    setFaturas([]);
+    setActive("Início");
+    setRestaurando(false);
+
+    alert("Aplicativo restaurado com sucesso. Seu login foi mantido.");
   }
 
   const totalContas =
@@ -3817,30 +3874,67 @@ function Painel({ email, sair }) {
                 </>
               )}
 
-              {![
-                "Contas",
-                "Entradas",
-                "Despesas",
-                "Contas a pagar",
-                "Cartões",
-                "Relatórios",
-              ].includes(
-                active
-              ) && (
+              {active === "Configurações" ? (
                 <>
-                  <span>
-                    MÓDULO
-                  </span>
+                  <span>CONFIGURAÇÕES</span>
 
-                  <h2>
-                    {active}
-                  </h2>
+                  <h2>Configurações</h2>
 
-                  <p>
-                    Esta área será configurada
-                    em seguida.
-                  </p>
+                  <div
+                    style={{
+                      marginTop: 25,
+                      padding: 22,
+                      background: "#0b0b0b",
+                      border: "1px solid #222",
+                      borderRadius: 14,
+                    }}
+                  >
+                    <span style={{ color: "#fff", fontSize: 14 }}>
+                      Restaurar aplicativo
+                    </span>
+
+                    <p style={{ marginTop: 10, lineHeight: 1.6 }}>
+                      Apaga os dados financeiros desta conta e mantém seu login.
+                    </p>
+
+                    <button
+                      onClick={restaurarAplicativo}
+                      disabled={restaurando}
+                      style={{
+                        marginTop: 18,
+                        padding: "12px 16px",
+                        background: restaurando ? "#333" : "#fff",
+                        color: restaurando ? "#888" : "#000",
+                        border: "0",
+                        borderRadius: 8,
+                        fontWeight: 700,
+                        cursor: restaurando ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {restaurando ? "Restaurando..." : "Restaurar aplicativo"}
+                    </button>
+                  </div>
                 </>
+              ) : (
+                ![
+                  "Contas",
+                  "Entradas",
+                  "Despesas",
+                  "Contas a pagar",
+                  "Cartões",
+                  "Relatórios",
+                  "Metas",
+                ].includes(active) && (
+                  <>
+                    <span>MÓDULO</span>
+
+                    <h2>{active}</h2>
+
+                    <p>
+                      Esta área será configurada em seguida.
+                    </p>
+                  </>
+                )
               )}
 
               <button
@@ -4198,6 +4292,9 @@ export default function App() {
     <Painel
       email={
         usuario.email
+      }
+      userId={
+        usuario.id
       }
       sair={sair}
     />
