@@ -105,6 +105,9 @@ function Painel({ email, sair, userId }) {
   const [active, setActive] = useState("Início");
   const [menuAberto, setMenuAberto] = useState(false);
   const [restaurando, setRestaurando] = useState(false);
+  const [mostrarSaldo, setMostrarSaldo] = useState(true);
+  const [senhaNova, setSenhaNova] = useState("");
+  const [alterandoSenha, setAlterandoSenha] = useState(false);
 
   async function carregarContas() {
     const { data, error } = await supabase
@@ -1249,6 +1252,29 @@ function Painel({ email, sair, userId }) {
   function selecionar(item) {
     setActive(item);
     setMenuAberto(false);
+  }
+
+  async function alterarSenha() {
+    if (!senhaNova || senhaNova.length < 6) {
+      alert("A nova senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    setAlterandoSenha(true);
+
+    const { error } = await supabase.auth.updateUser({
+      password: senhaNova,
+    });
+
+    setAlterandoSenha(false);
+
+    if (error) {
+      alert(`Não foi possível alterar a senha: ${error.message}`);
+      return;
+    }
+
+    setSenhaNova("");
+    alert("Senha alterada com sucesso.");
   }
 
   async function restaurarAplicativo() {
@@ -3882,37 +3908,196 @@ function Painel({ email, sair, userId }) {
 
                   <div
                     style={{
+                      display: "grid",
+                      gap: 14,
                       marginTop: 25,
-                      padding: 22,
-                      background: "#0b0b0b",
-                      border: "1px solid #222",
-                      borderRadius: 14,
+                      maxWidth: 850,
                     }}
                   >
-                    <span style={{ color: "#fff", fontSize: 14 }}>
-                      Restaurar aplicativo
-                    </span>
-
-                    <p style={{ marginTop: 10, lineHeight: 1.6 }}>
-                      Apaga os dados financeiros desta conta e mantém seu login.
-                    </p>
-
-                    <button
-                      onClick={restaurarAplicativo}
-                      disabled={restaurando}
+                    <div
                       style={{
-                        marginTop: 18,
-                        padding: "12px 16px",
-                        background: restaurando ? "#333" : "#fff",
-                        color: restaurando ? "#888" : "#000",
-                        border: "0",
-                        borderRadius: 8,
-                        fontWeight: 700,
-                        cursor: restaurando ? "not-allowed" : "pointer",
+                        padding: 22,
+                        background: "#0b0b0b",
+                        border: "1px solid #222",
+                        borderRadius: 14,
                       }}
                     >
-                      {restaurando ? "Restaurando..." : "Restaurar aplicativo"}
-                    </button>
+                      <span style={{ color: "#fff", fontSize: 14 }}>
+                        Perfil da conta
+                      </span>
+
+                      <p style={{ marginTop: 10, lineHeight: 1.6 }}>
+                        E-mail utilizado para entrar no Or Finance.
+                      </p>
+
+                      <div
+                        style={{
+                          marginTop: 15,
+                          padding: 13,
+                          background: "#111",
+                          border: "1px solid #222",
+                          borderRadius: 9,
+                          color: "#aaa",
+                        }}
+                      >
+                        {email}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 22,
+                        background: "#0b0b0b",
+                        border: "1px solid #222",
+                        borderRadius: 14,
+                      }}
+                    >
+                      <span style={{ color: "#fff", fontSize: 14 }}>
+                        Preferências
+                      </span>
+
+                      <p style={{ marginTop: 10, lineHeight: 1.6 }}>
+                        Controle como os valores são exibidos no aplicativo.
+                      </p>
+
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          marginTop: 15,
+                          color: "#aaa",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={mostrarSaldo}
+                          onChange={(e) => setMostrarSaldo(e.target.checked)}
+                        />
+                        Mostrar valores financeiros
+                      </label>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 22,
+                        background: "#0b0b0b",
+                        border: "1px solid #222",
+                        borderRadius: 14,
+                      }}
+                    >
+                      <span style={{ color: "#fff", fontSize: 14 }}>
+                        Segurança
+                      </span>
+
+                      <p style={{ marginTop: 10, lineHeight: 1.6 }}>
+                        Altere sua senha de acesso ao Or Finance.
+                      </p>
+
+                      <input
+                        type="password"
+                        placeholder="Nova senha (mínimo 6 caracteres)"
+                        value={senhaNova}
+                        onChange={(e) => setSenhaNova(e.target.value)}
+                        style={{
+                          width: "100%",
+                          maxWidth: 420,
+                          marginTop: 12,
+                          padding: 13,
+                          background: "#111",
+                          color: "#fff",
+                          border: "1px solid #292929",
+                          borderRadius: 9,
+                          outline: "none",
+                        }}
+                      />
+
+                      <br />
+
+                      <button
+                        onClick={alterarSenha}
+                        disabled={alterandoSenha}
+                        style={{
+                          marginTop: 12,
+                          padding: "11px 16px",
+                          background: alterandoSenha ? "#333" : "#fff",
+                          color: alterandoSenha ? "#888" : "#000",
+                          border: 0,
+                          borderRadius: 8,
+                          fontWeight: 700,
+                          cursor: alterandoSenha ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {alterandoSenha ? "Alterando..." : "Alterar senha"}
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 22,
+                        background: "#0b0b0b",
+                        border: "1px solid #222",
+                        borderRadius: 14,
+                      }}
+                    >
+                      <span style={{ color: "#fff", fontSize: 14 }}>
+                        Restaurar aplicativo
+                      </span>
+
+                      <p style={{ marginTop: 10, lineHeight: 1.6 }}>
+                        Apaga todos os dados financeiros desta conta e mantém seu login.
+                      </p>
+
+                      <button
+                        onClick={restaurarAplicativo}
+                        disabled={restaurando}
+                        style={{
+                          marginTop: 18,
+                          padding: "12px 16px",
+                          background: restaurando ? "#333" : "#fff",
+                          color: restaurando ? "#888" : "#000",
+                          border: "0",
+                          borderRadius: 8,
+                          fontWeight: 700,
+                          cursor: restaurando ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {restaurando ? "Restaurando..." : "Restaurar aplicativo"}
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 22,
+                        background: "#0b0b0b",
+                        border: "1px solid #222",
+                        borderRadius: 14,
+                      }}
+                    >
+                      <span style={{ color: "#fff", fontSize: 14 }}>
+                        Sessão
+                      </span>
+
+                      <p style={{ marginTop: 10, lineHeight: 1.6 }}>
+                        Encerra o acesso à sua conta neste dispositivo.
+                      </p>
+
+                      <button
+                        onClick={sair}
+                        style={{
+                          marginTop: 15,
+                          padding: "11px 16px",
+                          background: "#111",
+                          color: "#fff",
+                          border: "1px solid #333",
+                          borderRadius: 8,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Sair da conta
+                      </button>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -3936,7 +4121,6 @@ function Painel({ email, sair, userId }) {
                   </>
                 )
               )}
-
               <button
                 onClick={sair}
                 style={{
