@@ -10,9 +10,8 @@ const menu = [
   "Início",
   "Contas",
   "Entradas",
-  "Saídas",
+  "Despesas",
   "Contas a pagar",
-  "Compromissos",
   "Cartões",
   "Metas",
   "Relatórios",
@@ -78,13 +77,6 @@ function Painel({ email, sair, userId }) {
   const [vencimentoContaPagar, setVencimentoContaPagar] = useState("");
   const [contaPagarSelecionada, setContaPagarSelecionada] = useState("");
 
-  const [descricaoCompromisso, setDescricaoCompromisso] = useState("");
-  const [valorCompromisso, setValorCompromisso] = useState("");
-  const [vencimentoCompromisso, setVencimentoCompromisso] = useState("");
-  const [contaCompromisso, setContaCompromisso] = useState("");
-  const [tipoCompromisso, setTipoCompromisso] = useState("recorrente");
-  const [quantidadeParcelasCompromisso, setQuantidadeParcelasCompromisso] = useState("2");
-
   const [nomeCartao, setNomeCartao] = useState("");
   const [bancoCartao, setBancoCartao] = useState("");
   const [ultimosQuatro, setUltimosQuatro] = useState("");
@@ -116,6 +108,12 @@ function Painel({ email, sair, userId }) {
   const [mostrarSaldo, setMostrarSaldo] = useState(true);
   const [senhaNova, setSenhaNova] = useState("");
   const [alterandoSenha, setAlterandoSenha] = useState(false);
+
+  const [contaRecorrenteEditando, setContaRecorrenteEditando] = useState(null);
+  const [descricaoRecorrenteEdicao, setDescricaoRecorrenteEdicao] = useState("");
+  const [valorRecorrenteEdicao, setValorRecorrenteEdicao] = useState("");
+  const [vencimentoRecorrenteEdicao, setVencimentoRecorrenteEdicao] = useState("");
+  const [contaRecorrenteEdicao, setContaRecorrenteEdicao] = useState("");
 
   async function carregarContas() {
     const { data, error } = await supabase
@@ -526,93 +524,66 @@ function Painel({ email, sair, userId }) {
     alert("Conta a pagar adicionada com sucesso!");
   }
 
-  async function criarCompromisso(e) {
+  function iniciarEdicaoContaRecorrente(conta) {
+    setContaRecorrenteEditando(conta);
+    setDescricaoRecorrenteEdicao(conta.description || "");
+    setValorRecorrenteEdicao(conta.amount ?? "");
+    setVencimentoRecorrenteEdicao(conta.due_date || "");
+
+    const indiceConta = contas.findIndex(
+      (item) => String(item.id ?? item.uuid) === String(conta.account_id)
+    );
+
+    setContaRecorrenteEdicao(indiceConta >= 0 ? String(indiceConta) : "");
+  }
+
+  function cancelarEdicaoContaRecorrente() {
+    setContaRecorrenteEditando(null);
+    setDescricaoRecorrenteEdicao("");
+    setValorRecorrenteEdicao("");
+    setVencimentoRecorrenteEdicao("");
+    setContaRecorrenteEdicao("");
+  }
+
+  async function salvarEdicaoContaRecorrente(e) {
     e.preventDefault();
 
-    const conta = contas[Number(contaCompromisso)];
+    if (!contaRecorrenteEditando) return;
+
+    const conta = contas[Number(contaRecorrenteEdicao)];
 
     if (!conta) {
-      alert("Selecione a conta que será usada para pagar este compromisso.");
+      alert("Selecione a conta bancária.");
       return;
     }
 
     const identificador = conta.id ?? conta.uuid;
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
 
-    if (!user || !identificador) return;
-
-    const valor = Number(valorCompromisso) || 0;
-
-    if (valor <= 0) {
-      alert("Informe um valor válido.");
+    if (!identificador) {
+      alert("A conta bancária selecionada não possui um ID válido.");
       return;
     }
 
-    if (!vencimentoCompromisso) {
-      alert("Informe o primeiro vencimento.");
-      return;
-    }
-
-    if (tipoCompromisso === "parcelado") {
-      const quantidade = Math.max(
-        2,
-        Number(quantidadeParcelasCompromisso) || 2
-      );
-
-      const registros = Array.from({ length: quantidade }, (_, index) => {
-        const dataVencimento = adicionarMes(
-          new Date(`${vencimentoCompromisso}T00:00:00`),
-          index
-        );
-
-        return {
-          user_id: user.id,
-          account_id: identificador,
-          description: `${descricaoCompromisso} - Parcela ${index + 1}/${quantidade}`,
-          amount: valor,
-          due_date: dataParaString(dataVencimento),
-          status: "pending",
-          recurring: false,
-        };
-      });
-
-      const { error } = await supabase.from("bills").insert(registros);
-
-      if (error) {
-        alert(error.message);
-        return;
-      }
-
-      alert(`${quantidade} parcelas cadastradas com sucesso!`);
-    } else {
-      const { error } = await supabase.from("bills").insert({
-        user_id: user.id,
+    const { error } = await supabase
+      .from("bills")
+      .update({
         account_id: identificador,
-        description: descricaoCompromisso,
-        amount: valor,
-        due_date: vencimentoCompromisso,
-        status: "pending",
-        recurring: true,
-      });
+        description: descricaoRecorrenteEdicao,
+        amount: Number(valorRecorrenteEdicao) || 0,
+        due_date: vencimentoRecorrenteEdicao,
+      })
+      .eq("id", contaRecorrenteEditando.id)
+      .eq("recurring", true);
 
-      if (error) {
-        alert(error.message);
-        return;
-      }
-
-      alert("Compromisso recorrente cadastrado com sucesso!");
+    if (error) {
+      alert(`Não foi possível atualizar a conta recorrente: ${error.message}`);
+      return;
     }
 
-    setDescricaoCompromisso("");
-    setValorCompromisso("");
-    setVencimentoCompromisso("");
-    setContaCompromisso("");
-    setTipoCompromisso("recorrente");
-    setQuantidadeParcelasCompromisso("2");
-
+    cancelarEdicaoContaRecorrente();
     await carregarContasPagar();
+
+    alert("Conta recorrente atualizada com sucesso!");
   }
 
   async function pagarConta(conta) {
@@ -665,27 +636,6 @@ function Painel({ email, sair, userId }) {
     if (error) {
       alert(error.message);
       return;
-    }
-
-    if (conta.recurring) {
-      const proximoVencimento = adicionarMes(
-        new Date(`${conta.due_date}T00:00:00`),
-        1
-      );
-
-      const { error: erroProxima } = await supabase.from("bills").insert({
-        user_id: userId,
-        account_id: conta.account_id,
-        description: conta.description,
-        amount: Number(conta.amount || 0),
-        due_date: dataParaString(proximoVencimento),
-        status: "pending",
-        recurring: true,
-      });
-
-      if (erroProxima) {
-        alert(`A conta foi paga, mas não foi possível gerar a próxima recorrência: ${erroProxima.message}`);
-      }
     }
 
     await carregarContas();
@@ -1399,7 +1349,7 @@ function Painel({ email, sair, userId }) {
     if (restaurando) return;
 
     const confirmar = window.confirm(
-      "ATENÇÃO: isso vai apagar todos os dados financeiros desta conta, como contas, entradas, saídas, contas a pagar, compromissos, cartões, compras, faturas e metas. Seu login será mantido. Deseja continuar?"
+      "ATENÇÃO: isso vai apagar todos os dados financeiros desta conta, como contas, entradas, despesas, contas a pagar, cartões, compras, faturas e metas. Seu login será mantido. Deseja continuar?"
     );
 
     if (!confirmar) return;
@@ -1538,7 +1488,7 @@ function Painel({ email, sair, userId }) {
       (despesa) => ({
         id:
           `despesa-${despesa.id}`,
-        tipo: "Saída",
+        tipo: "Despesa",
         descricao:
           despesa.description,
         valor:
@@ -1606,16 +1556,6 @@ function Painel({ email, sair, userId }) {
           )}
         </nav>
 
-        <button
-          className="settings-button"
-          onClick={() =>
-            selecionar(
-              "Configurações"
-            )
-          }
-        >
-          Configurações
-        </button>
       </aside>
 
       <main className="main">
@@ -1641,9 +1581,18 @@ function Painel({ email, sair, userId }) {
             </h1>
           </div>
 
-          <div className="profile">
+          <button
+            type="button"
+            className="profile"
+            title="Abrir configurações"
+            onClick={() => selecionar("Configurações")}
+            style={{
+              cursor: "pointer",
+              background: "transparent",
+            }}
+          >
             JC
-          </div>
+          </button>
         </header>
 
         <section className="content">
@@ -1671,7 +1620,7 @@ function Painel({ email, sair, userId }) {
                   className="primary-button"
                   onClick={() =>
                     selecionar(
-                      "Movimentações"
+                      "Entradas"
                     )
                   }
                 >
@@ -1702,7 +1651,7 @@ function Painel({ email, sair, userId }) {
 
                 <div className="stat-card">
                   <span>
-                    Saídas
+                    Despesas
                   </span>
 
                   <strong>
@@ -1770,7 +1719,7 @@ function Painel({ email, sair, userId }) {
                       </h3>
 
                       <p>
-                        Suas entradas e saídas
+                        Suas entradas e despesas
                         aparecerão aqui.
                       </p>
                     </div>
@@ -1870,11 +1819,11 @@ function Painel({ email, sair, userId }) {
                     <button
                       onClick={() =>
                         selecionar(
-                          "Saídas"
+                          "Despesas"
                         )
                       }
                     >
-                      − Saída
+                      − Despesa
                     </button>
 
                     <button
@@ -1902,229 +1851,6 @@ function Painel({ email, sair, userId }) {
             </>
           ) : (
             <section className="panel page">
-              {active ===
-                "Movimentações" && (
-                <>
-                  <span>FLUXO FINANCEIRO</span>
-
-                  <h2>Nova movimentação</h2>
-
-                  <p style={{ marginTop: 8 }}>
-                    Escolha se deseja registrar uma entrada ou uma saída.
-                  </p>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-                      gap: 14,
-                      marginTop: 25,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => selecionar("Entradas")}
-                      style={{
-                        padding: 24,
-                        background: "#111",
-                        color: "#fff",
-                        border: "1px solid #292929",
-                        borderRadius: 12,
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <strong style={{ display: "block", fontSize: 18 }}>
-                        + Entrada
-                      </strong>
-                      <span style={{ display: "block", marginTop: 8, color: "#777" }}>
-                        Dinheiro que entrou na sua conta.
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => selecionar("Saídas")}
-                      style={{
-                        padding: 24,
-                        background: "#111",
-                        color: "#fff",
-                        border: "1px solid #292929",
-                        borderRadius: 12,
-                        textAlign: "left",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <strong style={{ display: "block", fontSize: 18 }}>
-                        − Saída
-                      </strong>
-                      <span style={{ display: "block", marginTop: 8, color: "#777" }}>
-                        Dinheiro que saiu da sua conta.
-                      </span>
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {active ===
-                "Compromissos" && (
-                <>
-                  <span>FINANÇAS</span>
-
-                  <h2>Compromissos</h2>
-
-                  <p style={{ marginTop: 8 }}>
-                    Cadastre financiamentos, empréstimos, assinaturas e outras contas recorrentes ou parceladas que não passam pelo cartão.
-                  </p>
-
-                  <form
-                    onSubmit={criarCompromisso}
-                    style={{ marginTop: 20 }}
-                  >
-                    <input
-                      type="text"
-                      placeholder="Descrição do compromisso"
-                      value={descricaoCompromisso}
-                      onChange={(e) => setDescricaoCompromisso(e.target.value)}
-                      required
-                      style={campo}
-                    />
-
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="Valor da parcela / cobrança"
-                      value={valorCompromisso}
-                      onChange={(e) => setValorCompromisso(e.target.value)}
-                      required
-                      style={campo}
-                    />
-
-                    <select
-                      value={contaCompromisso}
-                      onChange={(e) => setContaCompromisso(e.target.value)}
-                      required
-                      style={campo}
-                    >
-                      <option value="">Selecione a conta para pagamento</option>
-                      {contas.map((conta, index) => (
-                        <option
-                          key={conta.id ?? conta.uuid ?? index}
-                          value={index}
-                        >
-                          {conta.name}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      value={tipoCompromisso}
-                      onChange={(e) => setTipoCompromisso(e.target.value)}
-                      style={campo}
-                    >
-                      <option value="recorrente">Recorrente</option>
-                      <option value="parcelado">Parcelado</option>
-                    </select>
-
-                    {tipoCompromisso === "parcelado" && (
-                      <input
-                        type="number"
-                        min="2"
-                        step="1"
-                        placeholder="Quantidade de parcelas"
-                        value={quantidadeParcelasCompromisso}
-                        onChange={(e) => setQuantidadeParcelasCompromisso(e.target.value)}
-                        required
-                        style={campo}
-                      />
-                    )}
-
-                    <input
-                      type="date"
-                      value={vencimentoCompromisso}
-                      onChange={(e) => setVencimentoCompromisso(e.target.value)}
-                      required
-                      style={campo}
-                    />
-
-                    <button type="submit" style={botao}>
-                      {tipoCompromisso === "parcelado"
-                        ? "Cadastrar parcelamento"
-                        : "Cadastrar recorrência"}
-                    </button>
-                  </form>
-
-                  <div style={{ marginTop: 35 }}>
-                    <span>CADASTRADOS</span>
-                    <h2>Meus compromissos</h2>
-
-                    {contasPagar.filter(
-                      (conta) =>
-                        conta.recurring ||
-                        / - Parcela \d+\/\d+$/.test(conta.description || "")
-                    ).length === 0 ? (
-                      <p>Nenhum compromisso cadastrado.</p>
-                    ) : (
-                      contasPagar
-                        .filter(
-                          (conta) =>
-                            conta.recurring ||
-                            / - Parcela \d+\/\d+$/.test(conta.description || "")
-                        )
-                        .map((conta) => (
-                          <div
-                            key={`compromisso-${conta.id}`}
-                            style={{ ...itemStyle, display: "block" }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                gap: 15,
-                              }}
-                            >
-                              <div>
-                                <strong>{conta.description}</strong>
-                                <div style={{ color: "#666", fontSize: 12, marginTop: 6 }}>
-                                  Vencimento: {formatarData(conta.due_date)}
-                                </div>
-                                <div style={{ color: "#777", fontSize: 12, marginTop: 5 }}>
-                                  {conta.recurring ? "Recorrente" : "Parcelado"} • {conta.status === "paid" ? "Pago" : "Pendente"}
-                                </div>
-                              </div>
-
-                              <div style={{ textAlign: "right" }}>
-                                <strong>
-                                  R$ {Number(conta.amount || 0).toFixed(2).replace(".", ",")}
-                                </strong>
-                                {conta.status !== "paid" && (
-                                  <button
-                                    type="button"
-                                    onClick={() => pagarConta(conta)}
-                                    style={{
-                                      display: "block",
-                                      marginTop: 10,
-                                      padding: "9px 12px",
-                                      background: "#fff",
-                                      color: "#000",
-                                      border: 0,
-                                      borderRadius: 7,
-                                      fontWeight: 700,
-                                    }}
-                                  >
-                                    Pagar
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                    )}
-                  </div>
-                </>
-              )}
-
               {active ===
                 "Contas" && (
                 <>
@@ -2405,14 +2131,14 @@ function Painel({ email, sair, userId }) {
               )}
 
               {active ===
-                "Saídas" && (
+                "Despesas" && (
                 <>
                   <span>
                     FINANÇAS
                   </span>
 
                   <h2>
-                    Saídas
+                    Despesas
                   </h2>
 
                   <form
@@ -2466,7 +2192,7 @@ function Painel({ email, sair, userId }) {
 
                     <input
                       type="text"
-                      placeholder="Descrição da saída"
+                      placeholder="Descrição da despesa"
                       value={
                         descricaoDespesa
                       }
@@ -2505,7 +2231,7 @@ function Painel({ email, sair, userId }) {
                         botao
                       }
                     >
-                      Adicionar saída
+                      Adicionar despesa
                     </button>
                   </form>
 
@@ -2514,7 +2240,7 @@ function Painel({ email, sair, userId }) {
                       despesas.length ===
                       0
                     }
-                    texto="Nenhuma saída cadastrada."
+                    texto="Nenhuma despesa cadastrada."
                   >
                     {despesas.map(
                       (
@@ -2819,6 +2545,160 @@ function Painel({ email, sair, userId }) {
                       }
                     )}
                   </ListaVazia>
+
+                  <div
+                    style={{
+                      marginTop: 35,
+                      paddingTop: 25,
+                      borderTop: "1px solid #222",
+                    }}
+                  >
+                    <span>
+                      CONTAS RECORRENTES
+                    </span>
+
+                    <h2>
+                      Contas recorrentes
+                    </h2>
+
+                    {contaRecorrenteEditando && (
+                      <form
+                        onSubmit={salvarEdicaoContaRecorrente}
+                        style={{
+                          marginTop: 20,
+                          padding: 18,
+                          background: "#111",
+                          border: "1px solid #292929",
+                          borderRadius: 12,
+                        }}
+                      >
+                        <strong>Editar conta recorrente</strong>
+
+                        <select
+                          value={contaRecorrenteEdicao}
+                          onChange={(e) => setContaRecorrenteEdicao(e.target.value)}
+                          required
+                          style={campo}
+                        >
+                          <option value="">Selecione a conta bancária</option>
+                          {contas.map((conta, index) => (
+                            <option
+                              key={conta.id ?? conta.uuid ?? index}
+                              value={index}
+                            >
+                              {conta.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <input
+                          type="text"
+                          placeholder="Descrição da conta"
+                          value={descricaoRecorrenteEdicao}
+                          onChange={(e) => setDescricaoRecorrenteEdicao(e.target.value)}
+                          required
+                          style={campo}
+                        />
+
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Valor"
+                          value={valorRecorrenteEdicao}
+                          onChange={(e) => setValorRecorrenteEdicao(e.target.value)}
+                          required
+                          style={campo}
+                        />
+
+                        <input
+                          type="date"
+                          value={vencimentoRecorrenteEdicao}
+                          onChange={(e) => setVencimentoRecorrenteEdicao(e.target.value)}
+                          required
+                          style={campo}
+                        />
+
+                        <button type="submit" style={botao}>
+                          Salvar alterações
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={cancelarEdicaoContaRecorrente}
+                          style={{
+                            ...troca,
+                            marginTop: 6,
+                            border: "1px solid #292929",
+                            borderRadius: 9,
+                          }}
+                        >
+                          Cancelar edição
+                        </button>
+                      </form>
+                    )}
+
+                    {contasPagar.filter((conta) => conta.recurring === true).length === 0 ? (
+                      <p style={{ marginTop: 15 }}>
+                        Nenhuma conta recorrente cadastrada.
+                      </p>
+                    ) : (
+                      contasPagar
+                        .filter((conta) => conta.recurring === true)
+                        .map((conta) => (
+                          <div
+                            key={`recorrente-${conta.id}`}
+                            style={{
+                              ...itemStyle,
+                              display: "block",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 15,
+                                alignItems: "center",
+                              }}
+                            >
+                              <div>
+                                <strong>{conta.description}</strong>
+                                <div style={{ color: "#666", fontSize: 12, marginTop: 6 }}>
+                                  Próximo vencimento: {formatarData(conta.due_date)}
+                                </div>
+                                <div style={{ color: "#777", fontSize: 12, marginTop: 5 }}>
+                                  Status: {conta.status === "paid" ? "Paga" : "Pendente"}
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: "right" }}>
+                                <strong>
+                                  R${" "}
+                                  {Number(conta.amount || 0).toFixed(2).replace(".", ",")}
+                                </strong>
+
+                                <button
+                                  type="button"
+                                  onClick={() => iniciarEdicaoContaRecorrente(conta)}
+                                  style={{
+                                    display: "block",
+                                    marginTop: 10,
+                                    padding: "9px 12px",
+                                    background: "#fff",
+                                    color: "#000",
+                                    border: 0,
+                                    borderRadius: 7,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  Editar
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                    )}
+                  </div>
 
                   <div
                     style={{
@@ -4210,7 +4090,7 @@ function Painel({ email, sair, userId }) {
                     />
 
                     <Resumo
-                      titulo="Total de saídas"
+                      titulo="Total de despesas"
                       valor={
                         totalDespesas
                       }
@@ -4445,10 +4325,8 @@ function Painel({ email, sair, userId }) {
                 ![
                   "Contas",
                   "Entradas",
-                  "Saídas",
-                  "Movimentações",
+                  "Despesas",
                   "Contas a pagar",
-                  "Compromissos",
                   "Cartões",
                   "Relatórios",
                   "Metas",
@@ -4464,7 +4342,6 @@ function Painel({ email, sair, userId }) {
                   </>
                 )
               )}
-
             </section>
           )}
         </section>
