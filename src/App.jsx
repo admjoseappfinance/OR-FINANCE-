@@ -10,7 +10,7 @@ const menu = [
   "Início",
   "Contas",
   "Entradas",
-  "Saidas",
+  "Despesas",
   "Contas a pagar",
   "Compromissos",
   "Cartões",
@@ -55,7 +55,7 @@ function getRowIdColumn() {
 function Painel({ email, sair, userId }) {
   const [contas, setContas] = useState([]);
   const [entradas, setEntradas] = useState([]);
-  const [Saidas, setSaidas] = useState([]);
+  const [Despesas, setDespesas] = useState([]);
   const [contasPagar, setContasPagar] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [compras, setCompras] = useState([]);
@@ -69,9 +69,9 @@ function Painel({ email, sair, userId }) {
   const [descricaoEntrada, setDescricaoEntrada] = useState("");
   const [contaEntrada, setContaEntrada] = useState("");
 
-  const [valorSaida, setValorSaida] = useState("");
-  const [descricaoSaida, setDescricaoSaida] = useState("");
-  const [contaSaida, setContaSaida] = useState("");
+  const [valordespesa, setValordespesa] = useState("");
+  const [descricaodespesa, setDescricaodespesa] = useState("");
+  const [contadespesa, setContadespesa] = useState("");
 
   const [descricaoContaPagar, setDescricaoContaPagar] = useState("");
   const [valorContaPagar, setValorContaPagar] = useState("");
@@ -144,7 +144,7 @@ function Painel({ email, sair, userId }) {
     setEntradas(data || []);
   }
 
-  async function carregarSaidas() {
+  async function carregarDespesas() {
     const { data, error } = await supabase
       .from("expenses")
       .select("*")
@@ -155,7 +155,7 @@ function Painel({ email, sair, userId }) {
       return;
     }
 
-    setSaidas(data || []);
+    setDespesas(data || []);
   }
 
   async function carregarContasPagar() {
@@ -425,10 +425,10 @@ function Painel({ email, sair, userId }) {
     alert("Entrada adicionada com sucesso!");
   }
 
-  async function criarSaida(e) {
+  async function criardespesa(e) {
     e.preventDefault();
 
-    const conta = contas[Number(contaSaida)];
+    const conta = contas[Number(contadespesa)];
 
     if (!conta) {
       alert("Selecione uma conta.");
@@ -443,12 +443,12 @@ function Painel({ email, sair, userId }) {
 
     if (!user || !identificador) return;
 
-    const valor = Number(valorSaida) || 0;
+    const valor = Number(valordespesa) || 0;
 
     const { error } = await supabase.from("expenses").insert({
       user_id: user.id,
       account_id: identificador,
-      description: descricaoSaida,
+      description: descricaodespesa,
       amount: valor,
       expense_date: new Date().toISOString().split("T")[0],
     });
@@ -472,14 +472,14 @@ function Painel({ email, sair, userId }) {
       return;
     }
 
-    setValorSaida("");
-    setDescricaoSaida("");
-    setContaSaida("");
+    setValordespesa("");
+    setDescricaodespesa("");
+    setContadespesa("");
 
     await carregarContas();
-    await carregarSaidas();
+    await carregarDespesas();
 
-    alert("Saida adicionada com sucesso!");
+    alert("despesa adicionada com sucesso!");
   }
 
   async function criarContaPagar(e) {
@@ -1312,7 +1312,7 @@ function Painel({ email, sair, userId }) {
     async function carregarTudo() {
       await carregarContas();
       await carregarEntradas();
-      await carregarSaidas();
+      await carregarDespesas();
       await carregarContasPagar();
       await carregarCompras();
       await carregarParcelas();
@@ -1355,7 +1355,7 @@ function Painel({ email, sair, userId }) {
     if (restaurando) return;
 
     const confirmar = window.confirm(
-      "ATENÇÃO: isso vai apagar todos os dados financeiros desta conta, como contas, entradas, saidas, contas a pagar, cartões, compras, faturas e metas. Seu login será mantido. Deseja continuar?"
+      "ATENÇÃO: isso vai apagar todos os dados financeiros desta conta, como contas, entradas, Despesas, contas a pagar, cartões, compras, faturas e metas. Seu login será mantido. Deseja continuar?"
     );
 
     if (!confirmar) return;
@@ -1395,7 +1395,7 @@ function Painel({ email, sair, userId }) {
 
     setContas([]);
     setEntradas([]);
-    setSaidas([]);
+    setDespesas([]);
     setContasPagar([]);
     setCartoes([]);
     setCompras([]);
@@ -1427,12 +1427,12 @@ function Painel({ email, sair, userId }) {
       0
     );
 
-  const totalSaidas =
-    saidas.reduce(
-      (total, saida) =>
+  const totalDespesas =
+    Despesas.reduce(
+      (total, despesa) =>
         total +
         Number(
-          saida.amount || 0
+          despesa.amount || 0
         ),
       0
     );
@@ -1490,19 +1490,19 @@ function Painel({ email, sair, userId }) {
       })
     ),
 
-    ...saidas.map(
-      (saida) => ({
+    ...Despesas.map(
+      (despesa) => ({
         id:
-          `saida-${saida.id}`,
-        tipo: "saida",
+          `despesa-${despesa.id}`,
+        tipo: "despesa",
         descricao:
-          saida.description,
+          despesa.description,
         valor:
           Number(
-            saida.amount || 0
+            despesa.amount || 0
           ),
         data:
-         saida.expense_date,
+         despesa.expense_date,
       })
     ),
   ]
@@ -1652,12 +1652,12 @@ function Painel({ email, sair, userId }) {
 
                 <div className="stat-card">
                   <span>
-                    Saidas
+                    Despesas
                   </span>
 
                   <strong>
                     R${" "}
-                    {totalSaidas
+                    {totalDespesas
                       .toFixed(2)
                       .replace(
                         ".",
@@ -1720,7 +1720,7 @@ function Painel({ email, sair, userId }) {
                       </h3>
 
                       <p>
-                        Suas entradas e Saidas
+                        Suas entradas e Despesas
                         aparecerão aqui.
                       </p>
                     </div>
@@ -1820,11 +1820,11 @@ function Painel({ email, sair, userId }) {
                     <button
                       onClick={() =>
                         selecionar(
-                          "Saidas"
+                          "Despesas"
                         )
                       }
                     >
-                      −Saida
+                      −despesa
                     </button>
 
                     <button
@@ -2132,19 +2132,19 @@ function Painel({ email, sair, userId }) {
               )}
 
               {active ===
-                "Saidas" && (
+                "Despesas" && (
                 <>
                   <span>
                     FINANÇAS
                   </span>
 
                   <h2>
-                    Saidas
+                    Despesas
                   </h2>
 
                   <form
                     onSubmit={
-                      criarSaida
+                      criardespesa
                     }
                     style={{
                       marginTop: 20,
@@ -2152,10 +2152,10 @@ function Painel({ email, sair, userId }) {
                   >
                     <select
                       value={
-                        contaSaida
+                        contadespesa
                       }
                       onChange={(e) =>
-                        setContaSaida(
+                        setContadespesa(
                           e.target.value
                         )
                       }
@@ -2193,12 +2193,12 @@ function Painel({ email, sair, userId }) {
 
                     <input
                       type="text"
-                      placeholder="Descrição da saida"
+                      placeholder="Descrição da despesa"
                       value={
-                        descricaoSaida
+                        descricaodespesa
                       }
                       onChange={(e) =>
-                        setDescricaoSaida(
+                        setDescricaodespesa(
                           e.target.value
                         )
                       }
@@ -2212,10 +2212,10 @@ function Painel({ email, sair, userId }) {
                       type="number"
                       placeholder="Valor"
                       value={
-                        valorSaida
+                        valordespesa
                       }
                       onChange={(e) =>
-                        setValorSaida(
+                        setValordespesa(
                           e.target.value
                         )
                       }
@@ -2232,24 +2232,24 @@ function Painel({ email, sair, userId }) {
                         botao
                       }
                     >
-                      Adicionar saida
+                      Adicionar despesa
                     </button>
                   </form>
 
                   <ListaVazia
                     vazio={
-                      saidas.length ===
+                      Despesas.length ===
                       0
                     }
-                    texto="Nenhuma saida cadastrada."
+                    texto="Nenhuma despesa cadastrada."
                   >
-                    {saidas.map(
+                    {Despesas.map(
                       (
-                        saida
+                        despesa
                       ) => (
                         <div
                           key={
-                            saida.id
+                            despesa.id
                           }
                           style={
                             itemStyle
@@ -2258,7 +2258,7 @@ function Painel({ email, sair, userId }) {
                           <div>
                             <strong>
                               {
-                                saida.description
+                                despesa.description
                               }
                             </strong>
 
@@ -2272,7 +2272,7 @@ function Painel({ email, sair, userId }) {
                               }}
                             >
                               {formatarData(
-                                saida.expense_date
+                                despesa.expense_date
                               )}
                             </small>
                           </div>
@@ -2280,7 +2280,7 @@ function Painel({ email, sair, userId }) {
                           <span>
                             R${" "}
                             {Number(
-                              saida.amount ||
+                              despesa.amount ||
                                 0
                             )
                               .toFixed(
@@ -4032,9 +4032,9 @@ function Painel({ email, sair, userId }) {
                     />
 
                     <Resumo
-                      titulo="Total de saidas"
+                      titulo="Total de Despesas"
                       valor={
-                        totalSaidas
+                        totalDespesas
                       }
                     />
 
@@ -4056,7 +4056,7 @@ function Painel({ email, sair, userId }) {
                       titulo="Resultado"
                       valor={
                         totalEntradas -
-                        totalSaidas
+                        totalDespesas
                       }
                     />
                   </div>
@@ -4267,7 +4267,7 @@ function Painel({ email, sair, userId }) {
                 ![
                   "Contas",
                   "Entradas",
-                  "Saidas",
+                  "Despesas",
                   "Contas a pagar",
                   "Cartões",
                   "Relatórios",
