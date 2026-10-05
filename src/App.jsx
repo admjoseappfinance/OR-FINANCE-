@@ -1824,7 +1824,7 @@ function Painel({ email, sair, userId }) {
                         )
                       }
                     >
-                      −despesa
+                      −saida
                     </button>
 
                     <button
