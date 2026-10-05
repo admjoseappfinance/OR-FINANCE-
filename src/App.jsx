@@ -10,7 +10,7 @@ const menu = [
   "Início",
   "Contas",
   "Entradas",
-  "Despesas",
+  "Saidas",
   "Contas a pagar",
   "Compromissos",
   "Cartões",
@@ -55,7 +55,7 @@ function getRowIdColumn() {
 function Painel({ email, sair, userId }) {
   const [contas, setContas] = useState([]);
   const [entradas, setEntradas] = useState([]);
-  const [Despesas, setDespesas] = useState([]);
+  const [Saidas, setSaidas] = useState([]);
   const [contasPagar, setContasPagar] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [compras, setCompras] = useState([]);
@@ -144,7 +144,7 @@ function Painel({ email, sair, userId }) {
     setEntradas(data || []);
   }
 
-  async function carregarDespesas() {
+  async function carregarSaidas() {
     const { data, error } = await supabase
       .from("expenses")
       .select("*")
@@ -155,7 +155,7 @@ function Painel({ email, sair, userId }) {
       return;
     }
 
-    setDespesas(data || []);
+    setSaidas(data || []);
   }
 
   async function carregarContasPagar() {
@@ -477,7 +477,7 @@ function Painel({ email, sair, userId }) {
     setContadespesa("");
 
     await carregarContas();
-    await carregarDespesas();
+    await carregarSaidas();
 
     alert("despesa adicionada com sucesso!");
   }
@@ -1312,7 +1312,7 @@ function Painel({ email, sair, userId }) {
     async function carregarTudo() {
       await carregarContas();
       await carregarEntradas();
-      await carregarDespesas();
+      await carregarSaidas();
       await carregarContasPagar();
       await carregarCompras();
       await carregarParcelas();
@@ -1355,7 +1355,7 @@ function Painel({ email, sair, userId }) {
     if (restaurando) return;
 
     const confirmar = window.confirm(
-      "ATENÇÃO: isso vai apagar todos os dados financeiros desta conta, como contas, entradas, Despesas, contas a pagar, cartões, compras, faturas e metas. Seu login será mantido. Deseja continuar?"
+      "ATENÇÃO: isso vai apagar todos os dados financeiros desta conta, como contas, entradas, Saidas, contas a pagar, cartões, compras, faturas e metas. Seu login será mantido. Deseja continuar?"
     );
 
     if (!confirmar) return;
@@ -1395,7 +1395,7 @@ function Painel({ email, sair, userId }) {
 
     setContas([]);
     setEntradas([]);
-    setDespesas([]);
+    setSaidas([]);
     setContasPagar([]);
     setCartoes([]);
     setCompras([]);
@@ -1427,8 +1427,8 @@ function Painel({ email, sair, userId }) {
       0
     );
 
-  const totalDespesas =
-    Despesas.reduce(
+  const totalSaidas =
+    Saidas.reduce(
       (total, despesa) =>
         total +
         Number(
@@ -1490,7 +1490,7 @@ function Painel({ email, sair, userId }) {
       })
     ),
 
-    ...Despesas.map(
+    ...Saidas.map(
       (despesa) => ({
         id:
           `despesa-${despesa.id}`,
@@ -1652,12 +1652,12 @@ function Painel({ email, sair, userId }) {
 
                 <div className="stat-card">
                   <span>
-                    Despesas
+                    Saidas
                   </span>
 
                   <strong>
                     R${" "}
-                    {totalDespesas
+                    {totalSaidas
                       .toFixed(2)
                       .replace(
                         ".",
@@ -1720,7 +1720,7 @@ function Painel({ email, sair, userId }) {
                       </h3>
 
                       <p>
-                        Suas entradas e Despesas
+                        Suas entradas e Saidas
                         aparecerão aqui.
                       </p>
                     </div>
@@ -1820,7 +1820,7 @@ function Painel({ email, sair, userId }) {
                     <button
                       onClick={() =>
                         selecionar(
-                          "Despesas"
+                          "Saidas"
                         )
                       }
                     >
@@ -2132,14 +2132,14 @@ function Painel({ email, sair, userId }) {
               )}
 
               {active ===
-                "Despesas" && (
+                "Saidas" && (
                 <>
                   <span>
                     FINANÇAS
                   </span>
 
                   <h2>
-                    Despesas
+                    Saidas
                   </h2>
 
                   <form
@@ -2238,12 +2238,12 @@ function Painel({ email, sair, userId }) {
 
                   <ListaVazia
                     vazio={
-                      Despesas.length ===
+                      Saidas.length ===
                       0
                     }
                     texto="Nenhuma despesa cadastrada."
                   >
-                    {Despesas.map(
+                    {Saidas.map(
                       (
                         despesa
                       ) => (
@@ -4032,9 +4032,9 @@ function Painel({ email, sair, userId }) {
                     />
 
                     <Resumo
-                      titulo="Total de Despesas"
+                      titulo="Total de Saidas"
                       valor={
-                        totalDespesas
+                        totalSaidas
                       }
                     />
 
@@ -4056,7 +4056,7 @@ function Painel({ email, sair, userId }) {
                       titulo="Resultado"
                       valor={
                         totalEntradas -
-                        totalDespesas
+                        totalSaidas
                       }
                     />
                   </div>
@@ -4267,7 +4267,7 @@ function Painel({ email, sair, userId }) {
                 ![
                   "Contas",
                   "Entradas",
-                  "Despesas",
+                  "Saidas",
                   "Contas a pagar",
                   "Cartões",
                   "Relatórios",
