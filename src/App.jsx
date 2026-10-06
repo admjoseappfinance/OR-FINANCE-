@@ -10,9 +10,10 @@ const menu = [
   "Início",
   "Contas",
   "Entradas",
-  "Saidas",
+  "Saídas",
   "Contas a pagar",
   "Compromissos",
+  "Notificações",
   "Cartões",
   "Metas",
   "Relatórios",
@@ -55,7 +56,7 @@ function getRowIdColumn() {
 function Painel({ email, sair, userId }) {
   const [contas, setContas] = useState([]);
   const [entradas, setEntradas] = useState([]);
-  const [Saidas, setSaidas] = useState([]);
+  const [despesas, setDespesas] = useState([]);
   const [contasPagar, setContasPagar] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [compras, setCompras] = useState([]);
@@ -69,9 +70,9 @@ function Painel({ email, sair, userId }) {
   const [descricaoEntrada, setDescricaoEntrada] = useState("");
   const [contaEntrada, setContaEntrada] = useState("");
 
-  const [valordespesa, setValordespesa] = useState("");
-  const [descricaodespesa, setDescricaodespesa] = useState("");
-  const [contadespesa, setContadespesa] = useState("");
+  const [valorDespesa, setValorDespesa] = useState("");
+  const [descricaoDespesa, setDescricaoDespesa] = useState("");
+  const [contaDespesa, setContaDespesa] = useState("");
 
   const [descricaoContaPagar, setDescricaoContaPagar] = useState("");
   const [valorContaPagar, setValorContaPagar] = useState("");
@@ -116,6 +117,12 @@ function Painel({ email, sair, userId }) {
   const [senhaNova, setSenhaNova] = useState("");
   const [alterandoSenha, setAlterandoSenha] = useState(false);
 
+  // Caixa de entrada das notificações detectadas pelo módulo nativo Android.
+  // O App.jsx não captura notificações do sistema sozinho; ele apenas exibe
+  // registros que chegarem à tabela detected_transactions.
+  const [notificacoes, setNotificacoes] = useState([]);
+  const [carregandoNotificacoes, setCarregandoNotificacoes] = useState(false);
+
   async function carregarContas() {
     const { data, error } = await supabase
       .from("accounts")
@@ -144,7 +151,7 @@ function Painel({ email, sair, userId }) {
     setEntradas(data || []);
   }
 
-  async function carregarSaidas() {
+  async function carregarDespesas() {
     const { data, error } = await supabase
       .from("expenses")
       .select("*")
@@ -155,7 +162,7 @@ function Painel({ email, sair, userId }) {
       return;
     }
 
-    setSaidas(data || []);
+    setDespesas(data || []);
   }
 
   async function carregarContasPagar() {
@@ -425,10 +432,10 @@ function Painel({ email, sair, userId }) {
     alert("Entrada adicionada com sucesso!");
   }
 
-  async function criardespesa(e) {
+  async function criarDespesa(e) {
     e.preventDefault();
 
-    const conta = contas[Number(contadespesa)];
+    const conta = contas[Number(contaDespesa)];
 
     if (!conta) {
       alert("Selecione uma conta.");
@@ -443,12 +450,12 @@ function Painel({ email, sair, userId }) {
 
     if (!user || !identificador) return;
 
-    const valor = Number(valordespesa) || 0;
+    const valor = Number(valorDespesa) || 0;
 
     const { error } = await supabase.from("expenses").insert({
       user_id: user.id,
       account_id: identificador,
-      description: descricaodespesa,
+      description: descricaoDespesa,
       amount: valor,
       expense_date: new Date().toISOString().split("T")[0],
     });
@@ -472,14 +479,14 @@ function Painel({ email, sair, userId }) {
       return;
     }
 
-    setValordespesa("");
-    setDescricaodespesa("");
-    setContadespesa("");
+    setValorDespesa("");
+    setDescricaoDespesa("");
+    setContaDespesa("");
 
     await carregarContas();
-    await carregarSaidas();
+    await carregarDespesas();
 
-    alert("despesa adicionada com sucesso!");
+    alert("Despesa adicionada com sucesso!");
   }
 
   async function criarContaPagar(e) {
@@ -1308,16 +1315,98 @@ function Painel({ email, sair, userId }) {
     alert("Compra adicionada com sucesso!");
   }
 
+  async function carregarNotificacoes() {
+    setCarregandoNotificacoes(true);
+
+    const { data, error } = await supabase
+      .from("detected_transactions")
+      .select("*")
+      .eq("user_id", userId);
+
+    setCarregandoNotificacoes(false);
+
+    if (error) {
+      console.error("Erro ao carregar notificações:", error);
+      alert(`Não foi possível carregar as notificações: ${error.message}`);
+      return;
+    }
+
+    const ordenadas = (data || []).sort((a, b) => {
+      const dataA = new Date(a.detected_at || a.created_at || 0).getTime();
+      const dataB = new Date(b.detected_at || b.created_at || 0).getTime();
+      return dataB - dataA;
+    });
+
+    setNotificacoes(ordenadas);
+  }
+
+  function valorNotificacao(item) {
+    return Number(item.amount ?? item.value ?? item.valor ?? 0);
+  }
+
+  function descricaoNotificacao(item) {
+    return (
+      item.description ??
+      item.descricao ??
+      item.title ??
+      item.app_name ??
+      item.source ??
+      "Movimentação detectada"
+    );
+  }
+
+  function statusNotificacao(item) {
+    return item.status ?? "pending";
+  }
+
+  async function atualizarStatusNotificacao(item, status) {
+    if (!item?.id) {
+      alert("Esta notificação não possui um ID válido para atualização.");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("detected_transactions")
+      .update({ status })
+      .eq("id", item.id)
+      .eq("user_id", userId)
+      .select("*")
+      .single();
+
+    if (error) {
+      alert(`Não foi possível atualizar a notificação: ${error.message}`);
+      return;
+    }
+
+    setNotificacoes((lista) =>
+      lista.map((itemAtual) =>
+        String(itemAtual.id) === String(item.id) ? data : itemAtual
+      )
+    );
+  }
+
+  async function confirmarNotificacao(item) {
+    // Nesta etapa a confirmação registra apenas o estado da detecção.
+    // O lançamento automático no saldo será ligado ao serviço nativo Android
+    // quando ele passar a enviar os dados para detected_transactions.
+    await atualizarStatusNotificacao(item, "confirmed");
+  }
+
+  async function ignorarNotificacao(item) {
+    await atualizarStatusNotificacao(item, "ignored");
+  }
+
   useEffect(() => {
     async function carregarTudo() {
       await carregarContas();
       await carregarEntradas();
-      await carregarSaidas();
+      await carregarDespesas();
       await carregarContasPagar();
       await carregarCompras();
       await carregarParcelas();
       await carregarFaturas();
       await carregarCartoes();
+      await carregarNotificacoes();
     }
 
     carregarTudo();
@@ -1355,7 +1444,7 @@ function Painel({ email, sair, userId }) {
     if (restaurando) return;
 
     const confirmar = window.confirm(
-      "ATENÇÃO: isso vai apagar todos os dados financeiros desta conta, como contas, entradas, Saidas, contas a pagar, cartões, compras, faturas e metas. Seu login será mantido. Deseja continuar?"
+      "ATENÇÃO: isso vai apagar todos os dados financeiros desta conta, como contas, entradas, saídas, contas a pagar, cartões, compras, faturas e metas. Seu login será mantido. Deseja continuar?"
     );
 
     if (!confirmar) return;
@@ -1395,12 +1484,13 @@ function Painel({ email, sair, userId }) {
 
     setContas([]);
     setEntradas([]);
-    setSaidas([]);
+    setDespesas([]);
     setContasPagar([]);
     setCartoes([]);
     setCompras([]);
     setParcelas([]);
     setFaturas([]);
+    setNotificacoes([]);
     setActive("Início");
     setRestaurando(false);
 
@@ -1427,8 +1517,8 @@ function Painel({ email, sair, userId }) {
       0
     );
 
-  const totalSaidas =
-    Saidas.reduce(
+  const totalDespesas =
+    despesas.reduce(
       (total, despesa) =>
         total +
         Number(
@@ -1490,11 +1580,11 @@ function Painel({ email, sair, userId }) {
       })
     ),
 
-    ...Saidas.map(
+    ...despesas.map(
       (despesa) => ({
         id:
           `despesa-${despesa.id}`,
-        tipo: "despesa",
+        tipo: "Despesa",
         descricao:
           despesa.description,
         valor:
@@ -1502,7 +1592,7 @@ function Painel({ email, sair, userId }) {
             despesa.amount || 0
           ),
         data:
-         despesa.expense_date,
+          despesa.expense_date,
       })
     ),
   ]
@@ -1652,12 +1742,12 @@ function Painel({ email, sair, userId }) {
 
                 <div className="stat-card">
                   <span>
-                    Saidas
+                    Despesas
                   </span>
 
                   <strong>
                     R${" "}
-                    {totalSaidas
+                    {totalDespesas
                       .toFixed(2)
                       .replace(
                         ".",
@@ -1720,7 +1810,7 @@ function Painel({ email, sair, userId }) {
                       </h3>
 
                       <p>
-                        Suas entradas e Saidas
+                        Suas entradas e despesas
                         aparecerão aqui.
                       </p>
                     </div>
@@ -1820,11 +1910,11 @@ function Painel({ email, sair, userId }) {
                     <button
                       onClick={() =>
                         selecionar(
-                          "Saidas"
+                          "Saídas"
                         )
                       }
                     >
-                      −saida
+                      − Despesa
                     </button>
 
                     <button
@@ -2132,19 +2222,19 @@ function Painel({ email, sair, userId }) {
               )}
 
               {active ===
-                "Saidas" && (
+                "Saídas" && (
                 <>
                   <span>
                     FINANÇAS
                   </span>
 
                   <h2>
-                    Saidas
+                    Despesas
                   </h2>
 
                   <form
                     onSubmit={
-                      criardespesa
+                      criarDespesa
                     }
                     style={{
                       marginTop: 20,
@@ -2152,10 +2242,10 @@ function Painel({ email, sair, userId }) {
                   >
                     <select
                       value={
-                        contadespesa
+                        contaDespesa
                       }
                       onChange={(e) =>
-                        setContadespesa(
+                        setContaDespesa(
                           e.target.value
                         )
                       }
@@ -2195,10 +2285,10 @@ function Painel({ email, sair, userId }) {
                       type="text"
                       placeholder="Descrição da despesa"
                       value={
-                        descricaodespesa
+                        descricaoDespesa
                       }
                       onChange={(e) =>
-                        setDescricaodespesa(
+                        setDescricaoDespesa(
                           e.target.value
                         )
                       }
@@ -2212,10 +2302,10 @@ function Painel({ email, sair, userId }) {
                       type="number"
                       placeholder="Valor"
                       value={
-                        valordespesa
+                        valorDespesa
                       }
                       onChange={(e) =>
-                        setValordespesa(
+                        setValorDespesa(
                           e.target.value
                         )
                       }
@@ -2238,12 +2328,12 @@ function Painel({ email, sair, userId }) {
 
                   <ListaVazia
                     vazio={
-                      Saidas.length ===
+                      despesas.length ===
                       0
                     }
                     texto="Nenhuma despesa cadastrada."
                   >
-                    {Saidas.map(
+                    {despesas.map(
                       (
                         despesa
                       ) => (
@@ -3996,6 +4086,102 @@ function Painel({ email, sair, userId }) {
                 </>
               )}
 
+              {active === "Notificações" && (
+                <>
+                  <span>AUTOMAÇÃO</span>
+                  <h2>Notificações</h2>
+
+                  <p style={{ marginTop: 8, lineHeight: 1.6 }}>
+                    Aqui aparecem as movimentações que o módulo de notificações do Android enviar para o Or Finance.
+                    A confirmação abaixo apenas confirma ou ignora a detecção; a captura real do sistema será ligada na etapa Android.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={carregarNotificacoes}
+                    disabled={carregandoNotificacoes}
+                    style={{
+                      ...botao,
+                      marginTop: 18,
+                      opacity: carregandoNotificacoes ? 0.6 : 1,
+                    }}
+                  >
+                    {carregandoNotificacoes ? "Atualizando..." : "Atualizar notificações"}
+                  </button>
+
+                  <ListaVazia
+                    vazio={notificacoes.length === 0}
+                    texto="Nenhuma notificação financeira detectada."
+                  >
+                    {notificacoes.map((item) => {
+                      const valor = valorNotificacao(item);
+                      const status = statusNotificacao(item);
+                      const dataTexto = item.detected_at || item.created_at;
+
+                      return (
+                        <div
+                          key={item.id ?? `${descricaoNotificacao(item)}-${dataTexto}`}
+                          style={{
+                            ...itemStyle,
+                            display: "block",
+                            marginTop: 12,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 15,
+                              alignItems: "flex-start",
+                            }}
+                          >
+                            <div>
+                              <strong>{descricaoNotificacao(item)}</strong>
+                              <div style={{ color: "#777", fontSize: 12, marginTop: 6 }}>
+                                {item.type || item.tipo || "Movimentação"}
+                                {item.source || item.app_name ? ` • ${item.source || item.app_name}` : ""}
+                              </div>
+                              {dataTexto && (
+                                <div style={{ color: "#666", fontSize: 12, marginTop: 5 }}>
+                                  {new Date(dataTexto).toLocaleString("pt-BR")}
+                                </div>
+                              )}
+                            </div>
+
+                            <strong>
+                              R$ {valor.toFixed(2).replace(".", ",")}
+                            </strong>
+                          </div>
+
+                          <div style={{ color: "#777", fontSize: 12, marginTop: 10 }}>
+                            Status: {status}
+                          </div>
+
+                          {status === "pending" && (
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                              <button
+                                type="button"
+                                onClick={() => confirmarNotificacao(item)}
+                                style={botao}
+                              >
+                                Confirmar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => ignorarNotificacao(item)}
+                                style={{ ...botao, background: "#222", color: "#fff" }}
+                              >
+                                Ignorar
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </ListaVazia>
+                </>
+              )}
+
               {active ===
                 "Relatórios" && (
                 <>
@@ -4032,9 +4218,9 @@ function Painel({ email, sair, userId }) {
                     />
 
                     <Resumo
-                      titulo="Total de Saidas"
+                      titulo="Total de saídas"
                       valor={
-                        totalSaidas
+                        totalDespesas
                       }
                     />
 
@@ -4056,7 +4242,7 @@ function Painel({ email, sair, userId }) {
                       titulo="Resultado"
                       valor={
                         totalEntradas -
-                        totalSaidas
+                        totalDespesas
                       }
                     />
                   </div>
@@ -4205,6 +4391,37 @@ function Painel({ email, sair, userId }) {
                       }}
                     >
                       <span style={{ color: "#fff", fontSize: 14 }}>
+                        Notificações automáticas
+                      </span>
+
+                      <p style={{ marginTop: 10, lineHeight: 1.6 }}>
+                        O Or Finance está preparado para receber detecções de PIX, transferências e recebimentos. A captura da notificação do Android será conectada pelo serviço nativo na próxima etapa.
+                      </p>
+
+                      <div style={{ color: "#777", fontSize: 12, marginTop: 10 }}>
+                        {notificacoes.filter((item) => statusNotificacao(item) === "pending").length} detecção(ões) aguardando confirmação.
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          selecionar("Notificações");
+                        }}
+                        style={{ ...botao, marginTop: 15 }}
+                      >
+                        Abrir notificações
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 22,
+                        background: "#0b0b0b",
+                        border: "1px solid #222",
+                        borderRadius: 14,
+                      }}
+                    >
+                      <span style={{ color: "#fff", fontSize: 14 }}>
                         Restaurar aplicativo
                       </span>
 
@@ -4267,11 +4484,13 @@ function Painel({ email, sair, userId }) {
                 ![
                   "Contas",
                   "Entradas",
-                  "Saidas",
+                  "Saídas",
                   "Contas a pagar",
                   "Cartões",
                   "Relatórios",
                   "Metas",
+                  "Compromissos",
+                  "Notificações",
                 ].includes(active) && (
                   <>
                     <span>MÓDULO</span>
@@ -4284,23 +4503,6 @@ function Painel({ email, sair, userId }) {
                   </>
                 )
               )}
-              <button
-                onClick={sair}
-                style={{
-                  marginTop: 25,
-                  padding:
-                    "10px 15px",
-                  background:
-                    "#111",
-                  color: "#888",
-                  border:
-                    "1px solid #222",
-                  borderRadius: 8,
-                }}
-              >
-                Sair
-              </button>
-
               <small
                 style={{
                   display:
