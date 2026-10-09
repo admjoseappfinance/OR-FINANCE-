@@ -25,13 +25,13 @@ jobs:
       - name: Criar aplicativo web
         run: npm run build
 
-      - name: Preparar pasta Android
+      - name: Preparar projeto Android
         run: rm -rf android
 
-      - name: Criar projeto Android
+      - name: Gerar projeto Android
         run: npx cap add android
 
-      - name: Sincronizar Capacitor
+      - name: Sincronizar projeto
         run: npx cap sync android
 
       - name: Configurar Java
@@ -40,14 +40,20 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Dar permissão ao Gradle
-        run: chmod +x android/gradlew
+      - name: Compilar APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug
 
-      - name: Gerar APK
-        run: cd android && ./gradlew assembleDebug
+      - name: Salvar projeto Android
+        uses: actions/upload-artifact@v4
+        with:
+          name: or-finance-android
+          path: android/
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: or-finance-android
+          name: or-finance-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
